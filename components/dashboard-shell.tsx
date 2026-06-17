@@ -10,9 +10,17 @@ type ShellProps = {
   title: string;
   subtitle: string;
   children: ReactNode;
+  activeNav?: string;
+  searchPlaceholder?: string;
 };
 
-export function DashboardShell({ title, subtitle, children }: ShellProps) {
+export function DashboardShell({
+  title,
+  subtitle,
+  children,
+  activeNav = "Resource Allocation",
+  searchPlaceholder = "Search parameters, zones, or IDs...",
+}: ShellProps) {
   return (
     <div className="min-h-screen bg-background text-on-surface">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 shrink-0 border-r border-outline-variant bg-surface-container md:flex md:flex-col">
@@ -35,13 +43,13 @@ export function DashboardShell({ title, subtitle, children }: ShellProps) {
               type="button"
               className={cn(
                 "flex w-full items-center gap-3 border-r-2 px-4 py-3 text-left transition-colors",
-                item.active
+                item.label === activeNav
                   ? "border-primary bg-primary-container/10 text-primary"
                   : "border-transparent text-on-surface-variant hover:bg-surface-variant/60 hover:text-on-surface",
               )}
             >
-              <item.icon className={cn("h-5 w-5", item.active && "fill-current")} />
-              <span className={cn("text-sm", item.active && "font-medium")}>{item.label}</span>
+              <item.icon className={cn("h-5 w-5", item.label === activeNav && "fill-current")} />
+              <span className={cn("text-sm", item.label === activeNav && "font-medium")}>{item.label}</span>
             </button>
           ))}
         </nav>
@@ -77,7 +85,7 @@ export function DashboardShell({ title, subtitle, children }: ShellProps) {
               <div className="hidden max-w-105 flex-1 md:block">
                 <div className="relative">
                   <Bell className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant opacity-0" />
-                  <Input className="h-10 pl-3" placeholder="Search parameters, zones, or IDs..." />
+                  <Input className="h-10 pl-3" placeholder={searchPlaceholder} />
                 </div>
               </div>
             </div>

@@ -1,0 +1,58 @@
+import { MapPin } from "lucide-react";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { ledger, filterIcon as FilterIcon } from "./data";
+
+export function ForecastLedger() {
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader>
+        <CardTitle>Detailed Forecast Ledger</CardTitle>
+        <FilterIcon className="h-5 w-5 text-on-surface-variant" />
+      </CardHeader>
+      <div className="overflow-x-auto">
+        <table className="min-w-[820px] w-full text-left text-sm">
+          <thead className="bg-surface-container-low font-mono text-xs uppercase tracking-[0.18em] text-on-surface-variant">
+            <tr>
+              <th className="px-5 py-3">Zone Identifier</th>
+              <th className="px-5 py-3">Est. Violations</th>
+              <th className="px-5 py-3">Confidence %</th>
+              <th className="px-5 py-3">Risk Level</th>
+              <th className="px-5 py-3">Congestion Impact</th>
+              <th className="px-5 py-3 text-right">Recommended Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ledger.map((row) => (
+              <tr key={row.zone} className="border-t border-outline-variant">
+                <td className="px-5 py-3 font-mono">
+                  <span className="inline-flex items-center gap-2">
+                    <MapPin className="h-4 w-4 text-on-surface-variant" />
+                    {row.zone}
+                  </span>
+                </td>
+                <td className="px-5 py-3 font-mono text-right">{row.violations}</td>
+                <td className="px-5 py-3 font-mono">{row.confidence}</td>
+                <td className="px-5 py-3">
+                  <Badge tone={row.risk === "Critical" ? "critical" : row.risk === "Elevated" ? "elevated" : "muted"}>
+                    {row.risk}
+                  </Badge>
+                </td>
+                <td className="px-5 py-3 text-on-surface-variant">{row.impact}</td>
+                <td className="px-5 py-3 text-right">
+                  {row.action === "Automated" ? (
+                    <span className="text-on-surface-variant">Automated</span>
+                  ) : (
+                    <Button size="sm" variant={row.action === "Deploy Unit" ? "default" : "secondary"}>{row.action}</Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
