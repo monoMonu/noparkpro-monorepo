@@ -1,10 +1,10 @@
 import { Bell, Map, Siren, UserCircle2 } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { Button } from "@/app/components/ui/button";
-import { Input } from "@/app/components/ui/input";
-import { cn } from "@/app/lib/utils";
-import { navItems, sidebarFooterItems, topbarIcons } from "@/app/data/dashboard";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import { navItems, sidebarFooterItems, topbarIcons } from "@/data/dashboard";
 
 type ShellProps = {
   title: string;

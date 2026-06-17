@@ -12,8 +12,8 @@ import {
   YAxis,
 } from "recharts";
 
-import { cn } from "@/app/lib/utils";
-import { trendData, violationBars } from "@/app/data/dashboard";
+import { cn } from "@/lib/utils";
+import { trendData, violationBars } from "@/data/dashboard";
 
 type TrendChartProps = {
   compact?: boolean;
