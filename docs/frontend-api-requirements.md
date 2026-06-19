@@ -1,110 +1,154 @@
 # Frontend API Requirements
 
-This document lists the API endpoints needed by the current `components/dashboards/` frontend. The frontend is currently powered by local mock data; these contracts describe the backend responses needed to replace those mocks.
+This document describes the APIs needed by the current dashboard frontend. The endpoints are organized by backend resource and business capability, not by frontend screen.
 
-## General Conventions
+The current frontend mock data lives under `components/dashboards/`. The frontend screens that consume these APIs are:
 
-- Base path suggestion: `/api/v1`
-- Response format: JSON
-- Timestamps: ISO 8601 strings, for example `2026-06-19T09:30:00+05:30`
-- Percentages: send numeric values where possible, for example `94.2`, not `"94.2%"`
-- Counts and scores: send numbers, not formatted strings. The frontend can format commas, percent signs, arrows, and labels.
-- Recommended dashboard query params:
-  - `from`: ISO date or datetime
-  - `to`: ISO date or datetime
-  - `window`: enum such as `today`, `24h`, `7d`, `30d`
-  - `zoneId`: optional zone filter
-  - `stationId`: optional station filter
-  - `violationType`: optional violation type filter
+- `/dashboard/city-risk-map`
+- `/dashboard/analytics`
+- `/dashboard/prediction-center`
+- `/dashboard/resource-allocation`
+- `/dashboard/settings`
 
-Common enums used below:
+## API Conventions
 
-```ts
-type RiskLevel = "critical" | "high" | "elevated" | "routine" | "nominal" | "low";
-type ImpactLevel = "severe" | "moderate" | "low";
-type ActionType = "deploy_unit" | "monitor" | "automated" | "dispatch" | "details";
-type TrendDirection = "up" | "down" | "flat";
-```
+Base path: `/api/v1`
 
-## 1. Dashboard Shell
+Use JSON for request and response bodies. Use ISO 8601 timestamps. Return raw numbers for counts, percentages, scores, and deltas; the frontend will format values for display.
 
-The current navigation is static in the frontend, so this endpoint is optional unless the backend should control visible dashboards by role.
-
-### `GET /api/v1/dashboard/routes`
-
-Returns dashboard route metadata.
+Standard success wrapper:
 
 ```json
 {
-  "data": [
-    {
-      "id": "city-risk-map",
-      "label": "City Risk Map",
-      "href": "/dashboard/city-risk-map",
-      "title": "City Risk Map",
-      "subtitle": "Live spatial risk monitoring across stations, violations, and field-unit availability.",
-      "searchPlaceholder": "Search zones, active vehicles, or station IDs..."
-    }
-  ]
+  "data": {},
+  "meta": {}
 }
 ```
 
-## 2. City Risk Map Dashboard
-
-Frontend route: `/dashboard/city-risk-map`
-
-### `GET /api/v1/dashboards/city-risk-map/summary`
-
-Used by the stat cards.
-
-Query params: `window`, `zoneId`, `stationId`, `violationType`
+Standard error wrapper:
 
 ```json
 {
-  "data": {
-    "generatedAt": "2026-06-19T09:30:00+05:30",
-    "stats": [
-      {
-        "id": "total-active",
-        "label": "Total Active",
-        "value": 1248,
-        "delta": 18,
-        "trend": "up",
-        "tone": "primary"
-      },
-      {
-        "id": "predicted-24h",
-        "label": "Predicted 24h",
-        "value": 3105,
-        "delta": 0,
-        "trend": "flat",
-        "tone": "tertiary"
-      }
-    ]
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid request parameters.",
+    "details": {}
   }
 }
 ```
 
-### `GET /api/v1/dashboards/city-risk-map/hotspots`
+Common query params:
 
-Used by the right sidebar hotspot list and search.
+```ts
+type CommonQuery = {
+  from?: string;
+  to?: string;
+  window?: "today" | "24h" | "7d" | "30d" | "custom";
+  zoneId?: string;
+  stationId?: string;
+  violationType?: string;
+  page?: number;
+  pageSize?: number;
+  sort?: string;
+};
+```
 
-Query params: `window`, `q`, `limit`, `zoneId`, `stationId`, `violationType`
+Common enums:
+
+```ts
+type RiskLevel = "critical" | "high" | "elevated" | "routine" | "nominal" | "low";
+type PlanStatus = "draft" | "active" | "approved" | "reverted" | "archived";
+type JobStatus = "queued" | "running" | "completed" | "failed";
+type DispatchStatus = "queued" | "assigned" | "en_route" | "completed" | "cancelled";
+```
+
+## 1. Zones
+
+Zones are geographic enforcement areas. They are used by the City Risk Map, Analytics, Prediction Center, and Resource Allocation screens.
+
+### `GET /api/v1/zones`
+
+Returns searchable zones for filters, maps, tables, and allocation planning.
+
+Query params: `q`, `riskLevel`, `stationId`, `page`, `pageSize`
 
 ```json
 {
   "data": [
     {
-      "id": "zone-financial-district-alpha",
-      "rank": 1,
+      "id": "Z-01A",
+      "name": "Financial District Alpha",
+      "shortName": "Fin. District",
+      "stationId": "ST-001",
+      "riskLevel": "critical",
+      "riskScore": 98,
+      "center": {
+        "lat": 28.628,
+        "lng": 77.218
+      },
+      "boundary": {
+        "type": "Polygon",
+        "coordinates": []
+      }
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "pageSize": 25,
+    "total": 45
+  }
+}
+```
+
+### `GET /api/v1/zones/{zoneId}`
+
+Returns details for a selected zone.
+
+```json
+{
+  "data": {
+    "id": "Z-01A",
+    "name": "Financial District Alpha",
+    "shortName": "Fin. District",
+    "stationId": "ST-001",
+    "riskLevel": "critical",
+    "riskScore": 98,
+    "estimatedViolations24h": 120,
+    "activeViolations": 54,
+    "availableUnitsNearby": 8,
+    "center": {
+      "lat": 28.628,
+      "lng": 77.218
+    },
+    "updatedAt": "2026-06-19T09:30:00+05:30"
+  }
+}
+```
+
+### `GET /api/v1/zones/hotspots`
+
+Returns ranked hotspot zones.
+
+Used by:
+
+- City Risk Map active hotspots sidebar
+- Analytics recurring hotspots panel
+
+Query params: `from`, `to`, `window`, `q`, `riskLevel`, `limit`
+
+```json
+{
+  "data": [
+    {
       "zoneId": "Z-01A",
+      "rank": 1,
       "zoneName": "Financial District Alpha",
       "shortName": "Fin. District",
-      "detail": "Est. 120 violations",
+      "violationCount": 245,
       "estimatedViolations": 120,
       "riskScore": 98,
       "riskLevel": "critical",
-      "badgeLabel": "Critical"
+      "summary": "Est. 120 violations"
     }
   ],
   "meta": {
@@ -113,11 +157,16 @@ Query params: `window`, `q`, `limit`, `zoneId`, `stationId`, `violationType`
 }
 ```
 
-### `GET /api/v1/dashboards/city-risk-map/map`
+### `GET /api/v1/zones/risk-map`
 
-Used by the map canvas, hotspot pins, selected hotspot details, and violation mix panel.
+Returns map-ready zone risk data. This is resource-specific map data, not a dashboard-specific endpoint.
 
-Query params: `window`, `zoneId`, `stationId`, `violationType`
+Used by:
+
+- City Risk Map map canvas
+- Analytics geographic concentration panel
+
+Query params: `from`, `to`, `window`, `stationId`, `violationType`, `riskLevel`
 
 ```json
 {
@@ -126,242 +175,181 @@ Query params: `window`, `zoneId`, `stationId`, `violationType`
       "center": { "lat": 28.6139, "lng": 77.209 },
       "zoom": 12
     },
-    "pins": [
+    "zones": [
       {
-        "id": "pin-z01a",
         "zoneId": "Z-01A",
         "zoneName": "Financial District Alpha",
         "lat": 28.628,
         "lng": 77.218,
         "riskScore": 98,
         "riskLevel": "critical",
-        "estimatedViolations": 120
-      }
-    ],
-    "selectedZone": {
-      "zoneId": "Z-01A",
-      "zoneName": "Financial District Alpha",
-      "riskScore": 98,
-      "riskLevel": "critical",
-      "violationMix": [
-        {
-          "type": "double_parking",
-          "label": "Double Parking",
-          "percentage": 45,
-          "count": 54
-        },
-        {
-          "type": "loading_zone_blocked",
-          "label": "Loading Zone Blocked",
-          "percentage": 30,
-          "count": 36
-        }
-      ],
-      "actions": [
-        { "type": "dispatch", "label": "Dispatch", "enabled": true },
-        { "type": "details", "label": "Details", "enabled": true }
-      ]
-    }
-  }
-}
-```
-
-### `POST /api/v1/dispatches`
-
-Triggered by the City Risk Map `Dispatch` button.
-
-Request:
-
-```json
-{
-  "zoneId": "Z-01A",
-  "priority": "critical",
-  "recommendedUnits": {
-    "officers": 4,
-    "towTrucks": 1
-  },
-  "reason": "High predicted parking violation risk"
-}
-```
-
-Response:
-
-```json
-{
-  "data": {
-    "dispatchId": "DSP-20260619-0001",
-    "status": "queued",
-    "createdAt": "2026-06-19T09:31:00+05:30"
-  }
-}
-```
-
-## 3. Analytics Dashboard
-
-Frontend route: `/dashboard/analytics`
-
-### `GET /api/v1/dashboards/analytics/summary`
-
-Used by executive KPI cards.
-
-Query params: `from`, `to`, `window`, `zoneId`
-
-```json
-{
-  "data": {
-    "generatedAt": "2026-06-19T09:30:00+05:30",
-    "kpis": [
-      {
-        "id": "overall-city-risk",
-        "label": "Overall City Risk Level",
-        "value": "Critical",
-        "numericValue": 92,
-        "unit": "score",
-        "detail": "92/100",
-        "subdetail": "+14 pts vs baseline",
-        "tone": "error"
-      },
-      {
-        "id": "critical-zones",
-        "label": "Critical Zones Today",
-        "value": 14,
-        "detail": "Downtown Core Sector 7",
-        "subdetail": "North Stadium Arterial",
-        "tone": "tertiary"
+        "activeViolations": 54,
+        "estimatedViolations": 120,
+        "density": 0.94
       }
     ]
   }
 }
 ```
 
-### `GET /api/v1/dashboards/analytics/geographic-concentration`
+## 2. Violations
 
-Used by the geographic concentration map.
+Violations are parking or traffic enforcement events and predicted violation counts.
 
-Query params: `from`, `to`, `window`, `zoneId`
+### `GET /api/v1/violations/summary`
+
+Returns aggregate violation metrics.
+
+Used by:
+
+- City Risk Map stat cards
+- Analytics KPI cards
+- Prediction summary cards
+
+Query params: `from`, `to`, `window`, `zoneId`, `stationId`, `violationType`
 
 ```json
 {
   "data": {
-    "mode": ["live", "historical"],
-    "clusters": [
-      {
-        "id": "cluster-downtown-7",
-        "zoneId": "Z-07",
-        "zoneName": "Downtown Sector 7",
-        "lat": 28.628,
-        "lng": 77.218,
-        "density": 0.94,
-        "riskLevel": "critical",
-        "violationCount": 245
-      }
-    ]
+    "activeViolations": 1248,
+    "predictedViolations24h": 3105,
+    "projectedViolations7d": 14285,
+    "highRiskZoneCount": 14,
+    "criticalZoneCount": 14,
+    "recommendedDeploymentCount": 32,
+    "cityRiskScore": 92,
+    "cityRiskLevel": "critical",
+    "deltas": {
+      "activeViolations": 18,
+      "cityRiskScore": 14,
+      "projectedViolations7dPercentage": 12.4
+    },
+    "generatedAt": "2026-06-19T09:30:00+05:30"
   }
 }
 ```
 
-### `GET /api/v1/dashboards/analytics/hotspots`
+### `GET /api/v1/violations/timeseries`
 
-Used by the recurring hotspots panel.
+Returns time-series data for charts.
 
-Query params: `from`, `to`, `window`, `limit`
+Used by:
+
+- Analytics violations by hour chart
+- Analytics 7-day trend chart
+- Shared dashboard trend charts
+
+Query params:
+
+- `metric`: `violations` or `risk_score`
+- `grain`: `hour` or `day`
+- `from`, `to`, `window`, `zoneId`, `stationId`, `violationType`
 
 ```json
 {
   "data": [
     {
-      "id": "downtown-sector-7",
-      "label": "Downtown Sector 7",
-      "value": 245,
-      "riskLevel": "critical"
+      "timestamp": "2026-06-19T08:00:00+05:30",
+      "label": "08:00",
+      "value": 6,
+      "series": "actual"
     },
     {
-      "id": "north-stadium-arterial",
-      "label": "North Stadium Arterial",
-      "value": 182,
-      "riskLevel": "elevated"
+      "timestamp": "2026-06-19T10:00:00+05:30",
+      "label": "10:00",
+      "value": 8,
+      "series": "actual"
     }
   ]
 }
 ```
 
-### `GET /api/v1/dashboards/analytics/charts`
-
-Used by violations-by-hour chart, 7-day trend chart, and violation breakdown.
-
-Query params: `from`, `to`, `window`, `zoneId`, `violationType`
+For multi-model trend charts:
 
 ```json
 {
-  "data": {
-    "violationsByHour": [
-      { "slot": "08:00", "value": 6 },
-      { "slot": "10:00", "value": 8 }
-    ],
-    "sevenDayTrend": [
-      { "date": "2026-06-15", "label": "Mon", "alpha": 22, "beta": 18 },
-      { "date": "2026-06-16", "label": "Tue", "alpha": 25, "beta": 22 }
-    ],
-    "trendDeltaPercentage": 4.2,
-    "violationBreakdown": [
-      {
-        "type": "no_parking",
-        "label": "No Parking",
-        "percentage": 45,
-        "count": 450
-      },
-      {
-        "type": "loading_zone",
-        "label": "Loading Zone",
-        "percentage": 30,
-        "count": 300
-      }
-    ]
+  "data": [
+    {
+      "date": "2026-06-15",
+      "label": "Mon",
+      "alpha": 22,
+      "beta": 18
+    }
+  ],
+  "meta": {
+    "deltaPercentage": 4.2
   }
 }
 ```
 
-## 4. Prediction Center Dashboard
+### `GET /api/v1/violations/breakdown`
 
-Frontend route: `/dashboard/prediction-center`
+Returns violation distribution by type.
 
-### `GET /api/v1/dashboards/prediction-center/summary`
+Used by:
 
-Used by forecast KPI cards.
+- City Risk Map selected-zone violation mix
+- Analytics violation breakdown panel
+
+Query params: `from`, `to`, `window`, `zoneId`, `stationId`
+
+```json
+{
+  "data": [
+    {
+      "type": "no_parking",
+      "label": "No Parking",
+      "count": 450,
+      "percentage": 45
+    },
+    {
+      "type": "loading_zone",
+      "label": "Loading Zone",
+      "count": 300,
+      "percentage": 30
+    }
+  ]
+}
+```
+
+## 3. Forecasts
+
+Forecast APIs provide model predictions, confidence values, and recommended actions.
+
+### `GET /api/v1/forecasts/summary`
+
+Returns top-level forecast metrics.
+
+Used by:
+
+- Prediction Center KPI cards
 
 Query params: `horizonDays`, `zoneId`, `modelVersion`
 
 ```json
 {
   "data": {
-    "generatedAt": "2026-06-19T09:30:00+05:30",
     "horizonDays": 7,
-    "cards": [
-      {
-        "id": "projected-violations",
-        "label": "Projected Violations",
-        "value": 14285,
-        "delta": 12.4,
-        "trend": "up",
-        "detail": "Expected next 7 days based on current trajectory.",
-        "tone": "error"
-      },
-      {
-        "id": "high-risk-zones",
-        "label": "High Risk Zones Detected",
-        "value": 8,
-        "total": 45,
-        "detail": "Sector Alpha requires immediate intervention.",
-        "tone": "tertiary"
-      }
-    ]
+    "projectedViolations": 14285,
+    "projectedViolationsDeltaPercentage": 12.4,
+    "highRiskZones": 8,
+    "monitoredZones": 45,
+    "averageModelConfidence": 94.2,
+    "automationReady": true,
+    "primaryRiskZoneId": "Z-01A",
+    "primaryRiskZoneName": "Sector Alpha",
+    "generatedAt": "2026-06-19T09:30:00+05:30"
   }
 }
 ```
 
-### `GET /api/v1/dashboards/prediction-center/confidence-trend`
+### `GET /api/v1/forecasts/confidence`
 
-Used by the confidence trend chart.
+Returns model confidence over time.
+
+Used by:
+
+- Prediction Center confidence trend chart
 
 Query params: `horizonDays`, `zoneId`, `modelVersion`
 
@@ -384,9 +372,13 @@ Query params: `horizonDays`, `zoneId`, `modelVersion`
 }
 ```
 
-### `GET /api/v1/dashboards/prediction-center/ledger`
+### `GET /api/v1/forecasts`
 
-Used by the detailed forecast ledger table.
+Returns zone-level forecast rows.
+
+Used by:
+
+- Prediction Center detailed forecast ledger
 
 Query params: `horizonDays`, `zoneId`, `riskLevel`, `page`, `pageSize`, `sort`
 
@@ -394,17 +386,14 @@ Query params: `horizonDays`, `zoneId`, `riskLevel`, `page`, `pageSize`, `sort`
 {
   "data": [
     {
+      "id": "FC-20260619-Z01A",
       "zoneId": "Z-01A",
       "zoneName": "Financial District",
-      "displayName": "Z-01A Financial District",
       "estimatedViolations": 450,
       "confidence": 98,
       "riskLevel": "critical",
-      "riskLabel": "Critical",
       "congestionImpact": "severe",
-      "impactLabel": "Severe",
-      "recommendedAction": "deploy_unit",
-      "recommendedActionLabel": "Deploy Unit"
+      "recommendedAction": "deploy_unit"
     }
   ],
   "meta": {
@@ -415,45 +404,142 @@ Query params: `horizonDays`, `zoneId`, `riskLevel`, `page`, `pageSize`, `sort`
 }
 ```
 
-### `GET /api/v1/dashboards/prediction-center/scenarios`
+## 4. Forecast Models
 
-Used by the Scenario Engine panel.
+Model APIs are for AI model state and lifecycle actions.
 
-Query params: `horizonDays`, `zoneId`
+### `GET /api/v1/models`
+
+Returns available prediction models.
+
+Used by:
+
+- Prediction Center scenario panel
+- Future model selector
 
 ```json
 {
   "data": [
     {
-      "id": "model-a-baseline",
-      "label": "Model A (Baseline)",
-      "name": "Status Quo Routing",
+      "id": "alpha",
+      "name": "Model A",
+      "description": "Baseline routing",
       "status": "active",
+      "version": "2026.06.19-alpha",
+      "lastTrainedAt": "2026-06-18T23:00:00+05:30"
+    },
+    {
+      "id": "beta",
+      "name": "Model B",
+      "description": "What-if max enforcement",
+      "status": "candidate",
+      "version": "2026.06.19-beta",
+      "lastTrainedAt": "2026-06-18T23:15:00+05:30"
+    }
+  ]
+}
+```
+
+### `POST /api/v1/models/{modelId}/training-jobs`
+
+Starts model retraining.
+
+Used by:
+
+- Prediction Center `Retrain Model` button
+
+Request:
+
+```json
+{
+  "trainingWindowDays": 90,
+  "includeLiveSensorFeeds": true
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "jobId": "TRAIN-20260619-001",
+    "modelId": "alpha",
+    "status": "queued",
+    "queuedAt": "2026-06-19T09:33:00+05:30"
+  }
+}
+```
+
+### `GET /api/v1/models/training-jobs/{jobId}`
+
+Returns retraining job status.
+
+```json
+{
+  "data": {
+    "jobId": "TRAIN-20260619-001",
+    "modelId": "alpha",
+    "status": "running",
+    "progressPercentage": 42,
+    "startedAt": "2026-06-19T09:34:00+05:30",
+    "completedAt": null
+  }
+}
+```
+
+## 5. Scenarios and Simulations
+
+Scenario APIs run what-if calculations without directly changing approved resource plans.
+
+### `GET /api/v1/scenarios`
+
+Returns saved or default scenarios.
+
+Used by:
+
+- Prediction Center Scenario Engine
+
+Query params: `zoneId`, `horizonDays`
+
+```json
+{
+  "data": [
+    {
+      "id": "baseline",
+      "name": "Status Quo Routing",
+      "label": "Model A (Baseline)",
+      "status": "active",
+      "modelId": "alpha",
       "projectedTotal": 14285
     },
     {
-      "id": "model-b-max-enforcement",
-      "label": "Model B (What-If)",
+      "id": "max-enforcement",
       "name": "Max Enforcement",
+      "label": "Model B (What-If)",
       "status": "draft",
+      "modelId": "beta",
       "projectedTotal": 11040
     }
   ]
 }
 ```
 
-### `POST /api/v1/dashboards/prediction-center/scenarios/run`
+### `POST /api/v1/scenario-runs`
 
-Triggered by `Run Simulation`.
+Runs a scenario simulation.
+
+Used by:
+
+- Prediction Center `Run Simulation`
 
 Request:
 
 ```json
 {
+  "scenarioId": "max-enforcement",
   "horizonDays": 7,
   "zoneIds": ["Z-01A", "Z-12C"],
-  "scenario": {
-    "name": "Max Enforcement",
+  "inputs": {
     "officerCapacity": 115,
     "towTruckCapacity": 27,
     "strategy": "max_enforcement"
@@ -466,7 +552,8 @@ Response:
 ```json
 {
   "data": {
-    "scenarioId": "SCN-20260619-001",
+    "runId": "SCN-RUN-20260619-001",
+    "scenarioId": "max-enforcement",
     "status": "completed",
     "projectedTotal": 11040,
     "projectedReductionPercentage": 22.7,
@@ -475,82 +562,89 @@ Response:
 }
 ```
 
-### `POST /api/v1/dashboards/prediction-center/models/retrain`
+## 6. Enforcement Resources
 
-Triggered by `Retrain Model`.
+Resource APIs represent officers, tow trucks, and capacity.
 
-Request:
+### `GET /api/v1/resources/summary`
 
-```json
-{
-  "model": "alpha",
-  "trainingWindowDays": 90,
-  "includeLiveSensorFeeds": true
-}
-```
+Returns resource capacity and availability.
 
-Response:
+Used by:
+
+- Resource Allocation summary cards
+- City Risk Map available units card
+- Simulation parameter defaults
+
+Query params: `stationId`, `zoneId`, `window`
 
 ```json
 {
   "data": {
-    "jobId": "TRAIN-20260619-001",
-    "status": "queued",
-    "queuedAt": "2026-06-19T09:33:00+05:30"
+    "totalActiveResources": 142,
+    "availableOfficers": 115,
+    "availableTowTrucks": 27,
+    "availableUnits": 42,
+    "activeUnits": 50,
+    "projectedCoverage": 94.5,
+    "simulatedImpactLabel": "Optimal",
+    "expectedViolationReductionPercentage": 28,
+    "deltas": {
+      "totalActiveResources": 12,
+      "projectedCoverage": 2.1
+    }
   }
 }
 ```
 
-## 5. Resource Allocation Dashboard
+### `GET /api/v1/resources`
 
-Frontend route: `/dashboard/resource-allocation`
+Returns individual resources if the frontend later needs unit-level assignment.
 
-### `GET /api/v1/dashboards/resource-allocation/summary`
-
-Used by the summary stat cards.
-
-Query params: `planningWindow`, `zoneId`
+Query params: `type`, `status`, `stationId`, `zoneId`, `page`, `pageSize`
 
 ```json
 {
-  "data": {
-    "planId": "PLAN-20260619-001",
-    "generatedAt": "2026-06-19T09:30:00+05:30",
-    "stats": [
-      {
-        "id": "total-active-resources",
-        "label": "Total Active Resources",
-        "value": 142,
-        "delta": 12,
-        "trend": "up",
-        "tone": "primary"
-      },
-      {
-        "id": "projected-coverage",
-        "label": "Projected Coverage",
-        "value": 94.5,
-        "unit": "percentage",
-        "delta": 2.1,
-        "trend": "up",
-        "tone": "primary"
-      }
-    ]
+  "data": [
+    {
+      "id": "OFF-1024",
+      "type": "officer",
+      "status": "available",
+      "stationId": "ST-001",
+      "currentZoneId": "Z-01A"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "pageSize": 25,
+    "total": 142
   }
 }
 ```
 
-### `GET /api/v1/dashboards/resource-allocation/plan`
+## 7. Allocation Plans
 
-Used by AI zone assignments, simulation parameters, and impact prediction.
+Allocation plan APIs manage recommended resource distribution across zones.
 
-Query params: `planningWindow`, `zoneId`, `limit`
+### `GET /api/v1/allocation-plans/current`
+
+Returns the current draft or active allocation plan.
+
+Used by:
+
+- Resource Allocation plan table
+- Resource Allocation impact prediction
+
+Query params: `planningWindow`, `stationId`, `zoneId`
 
 ```json
 {
   "data": {
-    "planId": "PLAN-20260619-001",
+    "id": "PLAN-20260619-001",
     "status": "draft",
-    "simulationParameters": {
+    "planningWindow": "today",
+    "generatedAt": "2026-06-19T09:30:00+05:30",
+    "parameters": {
       "availableOfficers": 115,
       "availableTowTrucks": 27
     },
@@ -570,7 +664,7 @@ Query params: `planningWindow`, `zoneId`, `limit`
         "changePercentage": -28
       }
     ],
-    "zoneAssignments": [
+    "assignments": [
       {
         "zoneId": "Z-01",
         "zoneName": "Downtown Core",
@@ -579,21 +673,20 @@ Query params: `planningWindow`, `zoneId`, `limit`
         "officers": 24,
         "towTrucks": 8,
         "priority": "critical",
-        "priorityLabel": "Critical",
         "estimatedReductionPercentage": -42
       }
-    ],
-    "meta": {
-      "showing": 5,
-      "totalZones": 22
-    }
+    ]
   }
 }
 ```
 
-### `POST /api/v1/dashboards/resource-allocation/simulations`
+### `POST /api/v1/allocation-plans/simulations`
 
-Triggered by `Run AI Simulation`.
+Creates a simulated allocation plan from user-controlled capacity inputs.
+
+Used by:
+
+- Resource Allocation `Run AI Simulation`
 
 Request:
 
@@ -625,15 +718,18 @@ Response:
 }
 ```
 
-### `POST /api/v1/dashboards/resource-allocation/plans/{planId}/approve`
+### `POST /api/v1/allocation-plans/{planId}/approval`
 
-Triggered by `Approve Plan`.
+Approves an allocation plan.
+
+Used by:
+
+- Resource Allocation `Approve Plan`
 
 Request:
 
 ```json
 {
-  "approvedBy": "current-user-id",
   "notes": "Approved from NoParkPro dashboard"
 }
 ```
@@ -650,9 +746,13 @@ Response:
 }
 ```
 
-### `POST /api/v1/dashboards/resource-allocation/plans/{planId}/revert`
+### `POST /api/v1/allocation-plans/{planId}/revert`
 
-Triggered by `Revert`.
+Reverts an allocation plan to the previous active plan.
+
+Used by:
+
+- Resource Allocation `Revert`
 
 Request:
 
@@ -667,23 +767,27 @@ Response:
 ```json
 {
   "data": {
-    "planId": "PLAN-20260619-0009",
+    "activePlanId": "PLAN-20260619-0009",
+    "revertedPlanId": "PLAN-20260619-001",
     "status": "active",
     "revertedAt": "2026-06-19T09:36:00+05:30"
   }
 }
 ```
 
-### `GET /api/v1/dashboards/resource-allocation/plans/{planId}/export`
+### `GET /api/v1/allocation-plans/{planId}/export`
 
-Triggered by `Export Plan`.
+Exports an allocation plan.
+
+Used by:
+
+- Resource Allocation `Export Plan`
 
 Query params: `format=csv|xlsx|pdf`
 
-Response options:
+For direct downloads, return binary data with `Content-Type` and `Content-Disposition`.
 
-- For file download: return the binary file with a correct `Content-Type` and `Content-Disposition`.
-- For async export:
+For async exports:
 
 ```json
 {
@@ -696,13 +800,79 @@ Response options:
 }
 ```
 
-## 6. Settings Dashboard
+## 8. Dispatches
 
-Frontend route: `/dashboard/settings`
+Dispatch APIs create and track field-unit dispatches.
 
-The current page is a placeholder. These endpoints are recommended for the planned settings area.
+### `POST /api/v1/dispatches`
+
+Creates a dispatch request.
+
+Used by:
+
+- City Risk Map `Dispatch`
+- Prediction Center forecast action `Deploy Unit`
+
+Request:
+
+```json
+{
+  "zoneId": "Z-01A",
+  "source": "city_risk_map",
+  "priority": "critical",
+  "recommendedUnits": {
+    "officers": 4,
+    "towTrucks": 1
+  },
+  "reason": "High predicted parking violation risk"
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "DSP-20260619-0001",
+    "status": "queued",
+    "zoneId": "Z-01A",
+    "createdAt": "2026-06-19T09:31:00+05:30"
+  }
+}
+```
+
+### `GET /api/v1/dispatches`
+
+Returns dispatches.
+
+Query params: `status`, `zoneId`, `from`, `to`, `page`, `pageSize`
+
+```json
+{
+  "data": [
+    {
+      "id": "DSP-20260619-0001",
+      "status": "queued",
+      "zoneId": "Z-01A",
+      "priority": "critical",
+      "createdAt": "2026-06-19T09:31:00+05:30"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "pageSize": 25,
+    "total": 1
+  }
+}
+```
+
+## 9. System Settings
+
+Settings are not fully designed in the frontend yet, but the route exists.
 
 ### `GET /api/v1/settings`
+
+Returns system settings.
 
 ```json
 {
@@ -722,6 +892,10 @@ The current page is a placeholder. These endpoints are recommended for the plann
 ```
 
 ### `PATCH /api/v1/settings`
+
+Updates system settings.
+
+Request:
 
 ```json
 {
@@ -749,19 +923,66 @@ Response:
 }
 ```
 
-## Suggested MVP Endpoint Set
+## Frontend Consumption Map
 
-If the backend team wants the smallest useful first version, implement these first:
+This is only a mapping guide for frontend integration. It is not the API structure.
 
-1. `GET /api/v1/dashboards/city-risk-map/summary`
-2. `GET /api/v1/dashboards/city-risk-map/hotspots`
-3. `GET /api/v1/dashboards/city-risk-map/map`
-4. `GET /api/v1/dashboards/analytics/summary`
-5. `GET /api/v1/dashboards/analytics/charts`
-6. `GET /api/v1/dashboards/prediction-center/summary`
-7. `GET /api/v1/dashboards/prediction-center/confidence-trend`
-8. `GET /api/v1/dashboards/prediction-center/ledger`
-9. `GET /api/v1/dashboards/resource-allocation/summary`
-10. `GET /api/v1/dashboards/resource-allocation/plan`
+### City Risk Map
 
-Action endpoints can follow once the buttons are wired to mutations.
+- `GET /zones`
+- `GET /zones/hotspots`
+- `GET /zones/risk-map`
+- `GET /violations/summary`
+- `GET /violations/breakdown`
+- `GET /resources/summary`
+- `POST /dispatches`
+
+### Analytics
+
+- `GET /violations/summary`
+- `GET /violations/timeseries`
+- `GET /violations/breakdown`
+- `GET /zones/hotspots`
+- `GET /zones/risk-map`
+
+### Prediction Center
+
+- `GET /forecasts/summary`
+- `GET /forecasts/confidence`
+- `GET /forecasts`
+- `GET /models`
+- `POST /models/{modelId}/training-jobs`
+- `GET /scenarios`
+- `POST /scenario-runs`
+- `POST /dispatches`
+
+### Resource Allocation
+
+- `GET /resources/summary`
+- `GET /allocation-plans/current`
+- `POST /allocation-plans/simulations`
+- `POST /allocation-plans/{planId}/approval`
+- `POST /allocation-plans/{planId}/revert`
+- `GET /allocation-plans/{planId}/export`
+
+### Settings
+
+- `GET /settings`
+- `PATCH /settings`
+
+## Suggested Backend MVP
+
+Implement these first to replace the current mock data:
+
+1. `GET /api/v1/zones/hotspots`
+2. `GET /api/v1/zones/risk-map`
+3. `GET /api/v1/violations/summary`
+4. `GET /api/v1/violations/timeseries`
+5. `GET /api/v1/violations/breakdown`
+6. `GET /api/v1/forecasts/summary`
+7. `GET /api/v1/forecasts/confidence`
+8. `GET /api/v1/forecasts`
+9. `GET /api/v1/resources/summary`
+10. `GET /api/v1/allocation-plans/current`
+
+Then add mutation endpoints for dispatches, simulations, approvals, reverts, exports, and model retraining.
