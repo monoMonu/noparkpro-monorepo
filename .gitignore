@@ -1,2 +1,7 @@
 .venv
-.NoParkPro-frontend-main
+NoParkPro-frontend-main/
+
+data/violations.csv
+data/violations_clustered.csv
+
+data/
