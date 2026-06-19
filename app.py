@@ -16,6 +16,9 @@ MODEL_R2 = 0.944
 BASELINE_R2 = 0.937
 MODEL_MAE = 11.74
 
+_CACHE = {"result": None, "pred_col": None, "p75": None, "p90": None, "timestamp": 0}
+_CACHE_TTL_SECONDS = 300  # 5 minutes
+
 
 def _load_json(path, default=None):
     if not os.path.exists(path):
@@ -30,11 +33,43 @@ def _load_csv(path):
     return pd.read_csv(path)
 
 
+def safe_endpoint(fn):
+    """Wraps a route so a missing CSV/model file returns a clean 500 JSON error
+    instead of crashing the whole request with an unhandled traceback."""
+    from functools import wraps
+
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            return jsonify({"error": str(e), "endpoint": fn.__name__}), 500
+    return wrapper
+
+
 def _get_hotspots():
-    """Cached single source of truth for all 4 endpoints — runs the model once per request set."""
+    """
+    Single source of truth for all dashboard endpoints.
+    DBSCAN + XGBoost prediction is expensive — caches the result for
+    _CACHE_TTL_SECONDS so 4 dashboards loading at once don't trigger
+    4 separate model runs. Cache refreshes automatically after TTL expires.
+    """
+    import time
+    now = time.time()
+
+    if _CACHE["result"] is not None and (now - _CACHE["timestamp"]) < _CACHE_TTL_SECONDS:
+        return _CACHE["result"], _CACHE["pred_col"], _CACHE["p75"], _CACHE["p90"]
+
     result, p75, p90 = run_predictions()
     result = result.sort_values("priority_rank").reset_index(drop=True)
     pred_col = "predicted_violations_raw" if "predicted_violations_raw" in result.columns else "predicted_violations"
+
+    _CACHE["result"] = result
+    _CACHE["pred_col"] = pred_col
+    _CACHE["p75"] = p75
+    _CACHE["p90"] = p90
+    _CACHE["timestamp"] = now
+
     return result, pred_col, p75, p90
 
 
@@ -43,6 +78,7 @@ def _get_hotspots():
 # ============================================================
 
 @app.route("/api/city-risk-map", methods=["GET"])
+@safe_endpoint
 def city_risk_map():
     result, pred_col, p75, p90 = _get_hotspots()
     kpi = _load_json("data/kpi_dashboard.json")
@@ -117,6 +153,7 @@ def city_risk_map():
 # ============================================================
 
 @app.route("/api/analytics-executive", methods=["GET"])
+@safe_endpoint
 def analytics_executive():
     result, pred_col, p75, p90 = _get_hotspots()
     kpi = _load_json("data/kpi_dashboard.json")
@@ -188,6 +225,7 @@ def analytics_executive():
 # ============================================================
 
 @app.route("/api/prediction-center", methods=["GET"])
+@safe_endpoint
 def prediction_center():
     result, pred_col, p75, p90 = _get_hotspots()
     trends = _load_csv("data/cluster_trends.csv")
@@ -244,6 +282,7 @@ def prediction_center():
         })
 
     return jsonify({
+        "_note": "Alpha = trained XGBoost model accuracy. Beta = 7-day moving average baseline used for comparison during validation. There is only one trained model.",
         "toolbarActions": [
             {"label": "Refresh Forecast", "icon": "RefreshCw", "variant": "secondary"},
             {"label": "Run New Model", "icon": "Sparkles", "variant": "default"},
@@ -259,6 +298,7 @@ def prediction_center():
 # ============================================================
 
 @app.route("/api/resource-allocation", methods=["GET"])
+@safe_endpoint
 def resource_allocation():
     result, pred_col, p75, p90 = _get_hotspots()
 
@@ -311,14 +351,27 @@ def resource_allocation():
         "summaryStats": summary_stats,
         "zoneAssignments": zone_assignments,
         "hotspotRanking": hotspot_ranking,
-        "simulationMetrics": simulation_metrics,
-        "impactMetrics": impact_metrics,
+        "simulation": {
+            "_note": "ILLUSTRATIVE SCENARIO — not a second trained model. Starting values are real available-resource counts; 'after' projections use a flat assumption, not a calibrated simulation.",
+            "metrics": simulation_metrics,
+            "impact": impact_metrics,
+        },
     })
 
 
 @app.route("/api/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok"})
+    try:
+        result, _, _, _ = _get_hotspots()
+        return jsonify({
+            "status": "ok",
+            "model_loaded": True,
+            "clusters": int(len(result)),
+            "cache_age_seconds": round(__import__("time").time() - _CACHE["timestamp"]) if _CACHE["timestamp"] else None,
+            "version": "1.0",
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "model_loaded": False, "error": str(e), "version": "1.0"}), 500
 
 
 # ============================================================
@@ -338,6 +391,7 @@ def health():
 # ============================================================
 
 @app.route("/api/monthly-hotspots", methods=["GET"])
+@safe_endpoint
 def monthly_hotspots():
     data = _load_json("data/monthly_hotspots.json", default={"months": [], "data": {}})
     return jsonify(data)
@@ -361,6 +415,7 @@ def monthly_hotspots():
 # ============================================================
 
 @app.route("/api/repeat-offenders", methods=["GET"])
+@safe_endpoint
 def repeat_offenders():
     df = _load_csv("data/repeat_offenders.csv")
     summary = _load_json("data/repeat_offenders_summary.json")
@@ -390,6 +445,7 @@ def repeat_offenders():
 # ============================================================
 
 @app.route("/api/trends", methods=["GET"])
+@safe_endpoint
 def trends():
     df = _load_csv("data/cluster_trends.csv")
     summary = _load_json("data/trend_summary.json")
@@ -415,6 +471,7 @@ def trends():
 # ============================================================
 
 @app.route("/api/kpi-overview", methods=["GET"])
+@safe_endpoint
 def kpi_overview():
     kpi = _load_json("data/kpi_dashboard.json")
     return jsonify(kpi)
