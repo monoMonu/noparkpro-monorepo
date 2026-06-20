@@ -13,17 +13,17 @@ import {
 } from "recharts";
 
 import { cn } from "@/lib/utils";
-import { trendData, violationBars } from "./data";
 
 type TrendChartProps = {
   compact?: boolean;
+  data: Array<{ day: string; alpha: number; beta: number }>;
 };
 
-export function TrendChart({ compact = false }: TrendChartProps) {
+export function TrendChart({ compact = false, data }: TrendChartProps) {
   return (
     <div className={cn("h-[260px] min-h-0 min-w-0 w-full", compact && "h-[220px]")}>
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={trendData} margin={{ top: 10, right: 6, left: -12, bottom: 0 }}>
+        <AreaChart data={data} margin={{ top: 10, right: 6, left: -12, bottom: 0 }}>
           <defs>
             <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.28} />
@@ -56,11 +56,11 @@ export function TrendChart({ compact = false }: TrendChartProps) {
   );
 }
 
-export function ViolationsChart() {
+export function ViolationsChart({ data }: { data: Array<{ slot: string; value: number }> }) {
   return (
     <div className="h-40 min-h-0 min-w-0 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={violationBars} margin={{ top: 8, right: 0, left: -12, bottom: 0 }}>
+        <BarChart data={data} margin={{ top: 8, right: 0, left: -12, bottom: 0 }}>
           <CartesianGrid stroke="var(--outline-variant)" strokeOpacity={0.35} vertical={false} />
           <XAxis dataKey="slot" axisLine={false} tickLine={false} tick={{ fill: "var(--on-surface-variant)", fontSize: 11 }} />
           <YAxis axisLine={false} tickLine={false} tick={{ fill: "var(--on-surface-variant)", fontSize: 11 }} width={26} />

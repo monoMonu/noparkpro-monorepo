@@ -77,26 +77,3 @@ export const sidebarFooterItems = [
 ];
 
 export const topbarIcons = [Bell, BarChart3, Users];
-
-
-export const trendData = [
-  { day: "Mon", alpha: 22, beta: 18 },
-  { day: "Tue", alpha: 25, beta: 22 },
-  { day: "Wed", alpha: 30, beta: 28 },
-  { day: "Thu", alpha: 34, beta: 30 },
-  { day: "Fri", alpha: 41, beta: 37 },
-  { day: "Sat", alpha: 38, beta: 34 },
-  { day: "Sun", alpha: 46, beta: 40 },
-  { day: "Next Tue", alpha: 48, beta: 44 },
-];
-
-export const violationBars = [
-  { slot: "08:00", value: 6 },
-  { slot: "10:00", value: 8 },
-  { slot: "12:00", value: 16 },
-  { slot: "14:00", value: 22 },
-  { slot: "16:00", value: 20 },
-  { slot: "18:00", value: 14 },
-  { slot: "20:00", value: 9 },
-  { slot: "22:00", value: 5 },
-];

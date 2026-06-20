@@ -5,8 +5,15 @@ import { ForecastKpis } from "./ForecastKpis";
 import { ForecastLedger } from "./ForecastLedger";
 import { ScenarioEngine } from "./ScenarioEngine";
 import { toolbarActions } from "./data";
+import type { ForecastConfidencePoint, ForecastRow, ForecastSummary } from "@/lib/api";
 
-export function PredictionCenterDashboard() {
+type PredictionCenterDashboardProps = {
+  summary: ForecastSummary;
+  confidence: ForecastConfidencePoint[];
+  forecasts: ForecastRow[];
+};
+
+export function PredictionCenterDashboard({ summary, confidence, forecasts }: PredictionCenterDashboardProps) {
   return (
     <>
       <div className="mb-6 flex flex-wrap justify-end gap-2">
@@ -18,7 +25,7 @@ export function PredictionCenterDashboard() {
         ))}
       </div>
 
-      <ForecastKpis />
+      <ForecastKpis summary={summary} />
 
       <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px]">
         <Card>
@@ -30,14 +37,14 @@ export function PredictionCenterDashboard() {
             </div>
           </CardHeader>
           <CardContent>
-            <ConfidenceChart />
+            <ConfidenceChart data={confidence} />
           </CardContent>
         </Card>
-        <ScenarioEngine />
+        <ScenarioEngine summary={summary} />
       </section>
 
       <section className="mt-4">
-        <ForecastLedger />
+        <ForecastLedger forecasts={forecasts} />
       </section>
     </>
   );

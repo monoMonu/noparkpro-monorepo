@@ -1,9 +1,17 @@
 import ResourceAllocation from '@/components/dashboards/resource-allocation/Dashboard'
+import { getCurrentAllocationPlan, getResourcesSummary } from '@/lib/api'
 import React from 'react'
 
-const ResourceAllocationPage = () => {
+export const dynamic = "force-dynamic";
+
+const ResourceAllocationPage = async () => {
+  const [resourcesSummary, allocationPlan] = await Promise.all([
+    getResourcesSummary({ window: "today" }),
+    getCurrentAllocationPlan({ planningWindow: "today" }),
+  ]);
+
   return (
-    <ResourceAllocation />
+    <ResourceAllocation resourcesSummary={resourcesSummary.data} allocationPlan={allocationPlan.data} />
   )
 }
 

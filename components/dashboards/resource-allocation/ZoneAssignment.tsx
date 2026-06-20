@@ -2,10 +2,29 @@ import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowRight, Download } from 'lucide-react'
 import React from 'react'
-import { zoneAssignments } from './data'
 import { Badge } from '@/components/ui/badge'
+import type { AllocationPlan, RiskLevel } from '@/lib/api'
 
-const ZoneAssignment = () => {
+type Assignment = AllocationPlan["assignments"][number]
+
+function titleCase(value: string) {
+  return value.replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function badgeTone(priority: RiskLevel) {
+  if (priority === "critical") {
+    return "critical"
+  }
+  if (priority === "elevated") {
+    return "elevated"
+  }
+  if (priority === "routine") {
+    return "routine"
+  }
+  return "muted"
+}
+
+const ZoneAssignment = ({ assignments }: { assignments: Assignment[] }) => {
   return (
     <Card className="overflow-hidden">
       <CardHeader>
@@ -29,18 +48,18 @@ const ZoneAssignment = () => {
             </tr>
           </thead>
           <tbody>
-            {zoneAssignments.map((zone) => (
-              <tr key={zone.zone} className="border-t border-outline-variant/70">
+            {assignments.map((zone) => (
+              <tr key={zone.zoneId} className="border-t border-outline-variant/70">
                 <td className="px-4 py-4 align-top">
-                  <div className="font-medium text-on-surface">{zone.zone}</div>
+                  <div className="font-medium text-on-surface">{zone.displayName}</div>
                   <div className="mt-1 text-xs text-on-surface-variant">{zone.detail}</div>
                 </td>
                 <td className="px-4 py-4 align-top text-on-surface">{zone.officers}</td>
-                <td className="px-4 py-4 align-top text-on-surface">{zone.trucks}</td>
+                <td className="px-4 py-4 align-top text-on-surface">{zone.towTrucks}</td>
                 <td className="px-4 py-4 align-top">
-                  <Badge tone={zone.tone as never}>{zone.priority}</Badge>
+                  <Badge tone={badgeTone(zone.priority)}>{titleCase(zone.priority)}</Badge>
                 </td>
-                <td className="px-4 py-4 align-top text-on-surface-variant">{zone.reduction}</td>
+                <td className="px-4 py-4 align-top text-on-surface-variant">{zone.estimatedReductionPercentage}%</td>
               </tr>
             ))}
           </tbody>

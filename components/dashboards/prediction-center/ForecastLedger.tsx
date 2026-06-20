@@ -3,9 +3,18 @@ import { MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { ledger, filterIcon as FilterIcon } from "./data";
+import type { ForecastRow, RiskLevel } from "@/lib/api";
+import { filterIcon as FilterIcon } from "./data";
 
-export function ForecastLedger() {
+function labelRisk(riskLevel: RiskLevel) {
+  return riskLevel.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function labelAction(action: string) {
+  return action.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+export function ForecastLedger({ forecasts }: { forecasts: ForecastRow[] }) {
   return (
     <Card className="overflow-hidden">
       <CardHeader>
@@ -25,31 +34,34 @@ export function ForecastLedger() {
             </tr>
           </thead>
           <tbody>
-            {ledger.map((row) => (
-              <tr key={row.zone} className="border-t border-outline-variant">
+            {forecasts.map((row) => {
+              const action = labelAction(row.recommendedAction);
+
+              return (
+              <tr key={row.id} className="border-t border-outline-variant">
                 <td className="px-5 py-3 font-mono">
                   <span className="inline-flex items-center gap-2">
                     <MapPin className="h-4 w-4 text-on-surface-variant" />
-                    {row.zone}
+                    {row.zoneId} {row.zoneName}
                   </span>
                 </td>
-                <td className="px-5 py-3 font-mono text-right">{row.violations}</td>
-                <td className="px-5 py-3 font-mono">{row.confidence}</td>
+                <td className="px-5 py-3 font-mono text-right">{row.estimatedViolations}</td>
+                <td className="px-5 py-3 font-mono">{row.confidence}%</td>
                 <td className="px-5 py-3">
-                  <Badge tone={row.risk === "Critical" ? "critical" : row.risk === "Elevated" ? "elevated" : "muted"}>
-                    {row.risk}
+                  <Badge tone={row.riskLevel === "critical" ? "critical" : row.riskLevel === "elevated" ? "elevated" : "muted"}>
+                    {labelRisk(row.riskLevel)}
                   </Badge>
                 </td>
-                <td className="px-5 py-3 text-on-surface-variant">{row.impact}</td>
+                <td className="px-5 py-3 text-on-surface-variant">{labelAction(row.congestionImpact)}</td>
                 <td className="px-5 py-3 text-right">
-                  {row.action === "Automated" ? (
+                  {action === "Automated" ? (
                     <span className="text-on-surface-variant">Automated</span>
                   ) : (
-                    <Button size="sm" variant={row.action === "Deploy Unit" ? "default" : "secondary"}>{row.action}</Button>
+                    <Button size="sm" variant={action === "Deploy Unit" ? "default" : "secondary"}>{action}</Button>
                   )}
                 </td>
               </tr>
-            ))}
+            )})}
           </tbody>
         </table>
       </div>

@@ -2,8 +2,16 @@ import { Play, WandSparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { ForecastSummary } from "@/lib/api";
 
-export function ScenarioEngine() {
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("en-IN").format(value);
+}
+
+export function ScenarioEngine({ summary }: { summary: ForecastSummary }) {
+  const baselineTotal = summary.projectedViolations7d ?? summary.projectedViolations;
+  const whatIfTotal = Math.round(baselineTotal * 0.77);
+
   return (
     <Card className="h-full">
       <CardHeader>
@@ -18,14 +26,14 @@ export function ScenarioEngine() {
           </div>
           <div className="mt-3 font-mono text-sm">Status Quo Routing</div>
           <div className="mt-5 text-right text-sm text-on-surface-variant">
-            Projected Total: <span className="font-mono text-on-surface">14,285</span>
+            Projected Total: <span className="font-mono text-on-surface">{formatNumber(baselineTotal)}</span>
           </div>
         </div>
         <div className="px-4 py-4">
           <div className="font-mono text-sm font-semibold text-primary">Model B (What-If)</div>
           <div className="mt-3 font-mono text-sm">Max Enforcement</div>
           <div className="mt-5 text-right text-sm text-on-surface-variant">
-            Projected Total: <span className="font-mono text-on-surface">11,040</span>
+            Projected Total: <span className="font-mono text-on-surface">{formatNumber(whatIfTotal)}</span>
           </div>
         </div>
         <Button variant="secondary" className="w-full border-primary text-primary">

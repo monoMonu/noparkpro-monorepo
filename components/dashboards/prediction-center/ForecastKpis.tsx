@@ -1,8 +1,8 @@
-import type { LucideIcon } from "lucide-react";
+import { AlertTriangle, Cpu, TrendingUp, type LucideIcon } from "lucide-react";
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { forecastCards } from "./data";
+import type { ForecastSummary } from "@/lib/api";
 
 function ForecastKpi({
   label,
@@ -36,7 +36,41 @@ function ForecastKpi({
   );
 }
 
-export function ForecastKpis() {
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("en-IN").format(value);
+}
+
+export function ForecastKpis({ summary }: { summary: ForecastSummary }) {
+  const projectedViolations = summary.projectedViolations7d ?? summary.projectedViolations;
+  const forecastCards = [
+    {
+      label: "Projected Violations",
+      value: formatNumber(projectedViolations),
+      delta: `${summary.projectedViolationsDeltaPercentage >= 0 ? "+" : ""}${summary.projectedViolationsDeltaPercentage.toFixed(1)}%`,
+      detail: `Expected next ${summary.horizonDays} days based on current trajectory.`,
+      tone: "border-t-error",
+      icon: TrendingUp,
+    },
+    {
+      label: "High Risk Zones Detected",
+      value: formatNumber(summary.highRiskZones).padStart(2, "0"),
+      delta: `/ ${formatNumber(summary.monitoredZones)} Monitored`,
+      detail: summary.primaryRiskZoneName
+        ? `${summary.primaryRiskZoneName} requires immediate intervention.`
+        : "No primary risk zone reported.",
+      tone: "border-t-tertiary",
+      icon: AlertTriangle,
+    },
+    {
+      label: "Avg Model Confidence",
+      value: `${summary.averageModelConfidence.toFixed(1)}%`,
+      delta: summary.automationReady ? "Stable" : "Review",
+      detail: summary.automationReady ? "Ready for automated routing." : "Manual review recommended.",
+      tone: "border-t-tertiary",
+      icon: Cpu,
+    },
+  ];
+
   return (
     <section className="grid gap-4 lg:grid-cols-3">
       {forecastCards.map((card) => (
