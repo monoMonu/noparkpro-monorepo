@@ -57,7 +57,7 @@ def estimate_lane_blockage(parking_main_road, double_parking, lag_7_avg):
 
 
 def run_predictions():
-    df = pd.read_csv("data/violations_clustered.csv")
+    df = pd.read_csv("data/violations_clustered_slim.csv")
     df["created_datetime"] = pd.to_datetime(df["created_datetime"], format="ISO8601")
     df["date"] = pd.to_datetime(df["created_datetime"].dt.date)
 
