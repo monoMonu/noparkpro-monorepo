@@ -209,6 +209,12 @@ def run_predictions():
 
     latest["reasons"] = latest.apply(build_reasons, axis=1)
 
+    # for col in result.columns:
+    #     if str(result[col].dtype) in ["float32", "float16"]:
+    #         result[col] = result[col].astype(float)
+    
+    # for col in result.columns:
+    #     print(col, result[col].dtype)
     return latest, p75, p90
 
 

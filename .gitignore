@@ -10,3 +10,8 @@ data/cluster_features.csv        ← only used during training, not inference
 data/hotspot_predictions.csv     ← static snapshot, API recomputes fresh
 
 trim_violations_clustered.py
+
+__pycache__/
+*.pyc
+
+__pycache__/
