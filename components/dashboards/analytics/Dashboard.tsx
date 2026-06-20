@@ -11,6 +11,7 @@ import type {
   ViolationsSummary,
   ZoneHotspot,
 } from "@/lib/api";
+import ViolationBreakdown from "./ViolationBreakdown";
 
 type AnalyticsExecutiveDashboardProps = {
   summary: ViolationsSummary;
@@ -67,20 +68,25 @@ export function AnalyticsExecutiveDashboard({
 
   return (
     <>
+
       <section className="grid gap-4 lg:grid-cols-3">
         {executiveKpis.map((item) => (
           <KPICard key={item.label} {...item} />
         ))}
       </section>
 
-      <section className="mt-4 grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
+      <section>
         <MapPanel riskMap={riskMap} />
+      </section>
+
+      <section className="mt-4 grid gap-4 lg:grid-cols-2">
         <HotspotsPanel hotspots={hotspots} />
+        <ViolationBreakdown breakdown={breakdown} />
       </section>
 
       <section className="mt-4">
-        <SummaryCharts hourlySeries={hourlySeries} dailySeries={dailySeries} breakdown={breakdown} />
-      </section>     
+        <SummaryCharts hourlySeries={hourlySeries} dailySeries={dailySeries} />
+      </section>
     </>
   );
 }

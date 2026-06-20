@@ -21,7 +21,7 @@ type TrendChartProps = {
 
 export function TrendChart({ compact = false, data }: TrendChartProps) {
   return (
-    <div className={cn("h-full min-h-0 min-w-0 w-full", compact && "h-full")}>
+    <div className={cn("h-65 min-h-0 min-w-0 w-full", compact && "h-65")}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 10, left: 10, bottom: 0 }}>
           <defs>
