@@ -9,22 +9,34 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function CityRiskMapCommandCenterPage() {
+export default async function CityRiskMapCommandCenterPage(props: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const searchParams = await props.searchParams;
+  const windowParam = (searchParams.window as string) || "today";
+  const stationIdParam = (searchParams.stationId as string) || "";
+  const violationTypeParam = (searchParams.violationType as string) || "";
+
   const [hotspots, riskMap, violationsSummary, violationsBreakdown, resourcesSummary] = await Promise.all([
-    getZoneHotspots({ window: "today", limit: 4 }),
-    getRiskMap({ window: "today" }),
-    getViolationsSummary({ window: "today" }),
-    getViolationsBreakdown({ window: "today" }),
-    getResourcesSummary({ window: "today" }),
+    getZoneHotspots({ window: windowParam as any, stationId: stationIdParam, violationType: violationTypeParam, limit: 4 }),
+    getRiskMap({ window: windowParam as any, stationId: stationIdParam, violationType: violationTypeParam }),
+    getViolationsSummary({ window: windowParam as any, stationId: stationIdParam, violationType: violationTypeParam }),
+    getViolationsBreakdown({ window: windowParam as any }),
+    getResourcesSummary({ window: windowParam as any, stationId: stationIdParam }),
   ]);
 
   return (
     <CityRiskMapDashboard
-      hotspots={hotspots.data}
-      riskMap={riskMap.data}
-      violationsSummary={violationsSummary.data}
-      violationsBreakdown={violationsBreakdown.data}
-      resourcesSummary={resourcesSummary.data}
+      initialHotspots={hotspots.data}
+      initialRiskMap={riskMap.data}
+      initialViolationsSummary={violationsSummary.data}
+      initialViolationsBreakdown={violationsBreakdown.data}
+      initialResourcesSummary={resourcesSummary.data}
+      initialFilters={{
+        window: windowParam,
+        stationId: stationIdParam,
+        violationType: violationTypeParam,
+      }}
     />
   );
 }

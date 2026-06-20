@@ -4,18 +4,27 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import type { AllocationPlan, ResourcesSummary } from '@/lib/api'
 
+type SimulationNImpactProps = {
+  resourcesSummary: ResourcesSummary;
+  allocationPlan: AllocationPlan;
+  availableOfficers: number;
+  setAvailableOfficers: (val: number) => void;
+  availableTowTrucks: number;
+  setAvailableTowTrucks: (val: number) => void;
+  onRunSimulation: () => void;
+  isSimulating: boolean;
+};
+
 const SimulationNImpact = ({
   resourcesSummary,
   allocationPlan,
-}: {
-  resourcesSummary: ResourcesSummary;
-  allocationPlan: AllocationPlan;
-}) => {
-  const simulationMetrics = [
-    { label: "Available Officers", value: resourcesSummary.availableOfficers },
-    { label: "Available Tow Trucks", value: resourcesSummary.availableTowTrucks },
-  ]
-
+  availableOfficers,
+  setAvailableOfficers,
+  availableTowTrucks,
+  setAvailableTowTrucks,
+  onRunSimulation,
+  isSimulating,
+}: SimulationNImpactProps) => {
   return (
     <div className="space-y-4">
       <Card>
@@ -27,21 +36,67 @@ const SimulationNImpact = ({
           <Sparkles className="h-5 w-5 text-primary" />
         </CardHeader>
         <CardContent className="space-y-4">
-          {simulationMetrics.map((metric) => (
-            <div key={metric.label} className="space-y-2">
-              <div className="flex items-center justify-between text-sm text-on-surface-variant">
-                <span>{metric.label}</span>
-                <span className="font-semibold text-on-surface">{metric.value}</span>
-              </div>
-              <div className="flex items-center overflow-hidden rounded-md border border-outline-variant">
-                <button className="h-8 w-8 bg-surface-container-low text-sm text-on-surface-variant">-</button>
-                <div className="flex h-8 flex-1 items-center justify-center bg-surface text-sm font-medium text-on-surface">{metric.value}</div>
-                <button className="h-8 w-8 bg-surface-container-low text-sm text-on-surface-variant">+</button>
-              </div>
+          {/* Officers Controller */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm text-on-surface-variant">
+              <span>Available Officers</span>
+              <span className="font-semibold text-on-surface">{availableOfficers}</span>
             </div>
-          ))}
-          <Button className="w-full">
-            <TrendingUp className="h-4 w-4" /> Run AI Simulation
+            <div className="flex items-center overflow-hidden rounded-md border border-outline-variant">
+              <button
+                type="button"
+                className="h-8 w-8 bg-surface-container-low text-sm text-on-surface-variant hover:bg-surface-variant/40"
+                onClick={() => setAvailableOfficers(Math.max(0, availableOfficers - 1))}
+              >
+                -
+              </button>
+              <div className="flex h-8 flex-1 items-center justify-center bg-surface text-sm font-medium text-on-surface">
+                {availableOfficers}
+              </div>
+              <button
+                type="button"
+                className="h-8 w-8 bg-surface-container-low text-sm text-on-surface-variant hover:bg-surface-variant/40"
+                onClick={() => setAvailableOfficers(availableOfficers + 1)}
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          {/* Tow Trucks Controller */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm text-on-surface-variant">
+              <span>Available Tow Trucks</span>
+              <span className="font-semibold text-on-surface">{availableTowTrucks}</span>
+            </div>
+            <div className="flex items-center overflow-hidden rounded-md border border-outline-variant">
+              <button
+                type="button"
+                className="h-8 w-8 bg-surface-container-low text-sm text-on-surface-variant hover:bg-surface-variant/40"
+                onClick={() => setAvailableTowTrucks(Math.max(0, availableTowTrucks - 1))}
+              >
+                -
+              </button>
+              <div className="flex h-8 flex-1 items-center justify-center bg-surface text-sm font-medium text-on-surface">
+                {availableTowTrucks}
+              </div>
+              <button
+                type="button"
+                className="h-8 w-8 bg-surface-container-low text-sm text-on-surface-variant hover:bg-surface-variant/40"
+                onClick={() => setAvailableTowTrucks(availableTowTrucks + 1)}
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          <Button
+            className="w-full"
+            onClick={onRunSimulation}
+            disabled={isSimulating}
+          >
+            <TrendingUp className="h-4 w-4" />
+            {isSimulating ? "Running Simulation..." : "Run AI Simulation"}
           </Button>
         </CardContent>
       </Card>

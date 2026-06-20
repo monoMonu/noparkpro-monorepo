@@ -3,18 +3,26 @@ import { getForecasts, getForecastsConfidence, getForecastsSummary } from "@/lib
 
 export const dynamic = "force-dynamic";
 
-export default async function PredictionCenterForecastsPage() {
+type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>
+
+export default async function PredictionCenterForecastsPage(props: {
+  searchParams: SearchParams;
+}) {
+  const searchParams = await props.searchParams;
+  const horizonParam = parseInt((searchParams.horizonDays as string) || "7", 10);
+
   const [summary, confidence, forecasts] = await Promise.all([
-    getForecastsSummary({ horizonDays: 7 }),
-    getForecastsConfidence({ horizonDays: 7 }),
-    getForecasts({ horizonDays: 7, pageSize: 25 }),
+    getForecastsSummary({ horizonDays: horizonParam }),
+    getForecastsConfidence({ horizonDays: horizonParam }),
+    getForecasts({ horizonDays: horizonParam, pageSize: 25 }),
   ]);
 
   return (
     <PredictionCenterDashboard
-      summary={summary.data}
-      confidence={confidence.data}
-      forecasts={forecasts.data}
+      initialSummary={summary.data}
+      initialConfidence={confidence.data}
+      initialForecasts={forecasts.data}
+      initialFilters={{ horizonDays: horizonParam }}
     />
   );
 }

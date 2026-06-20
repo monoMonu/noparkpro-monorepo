@@ -9,24 +9,32 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export default async function AnalyticsExecutiveSummaryPage() {
+type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>
+
+export default async function AnalyticsExecutiveSummaryPage(props: {
+  searchParams: SearchParams;
+}) {
+  const searchParams = await props.searchParams;
+  const windowParam = (searchParams.window as string) || "today";
+
   const [summary, hourlySeries, dailySeries, breakdown, hotspots, riskMap] = await Promise.all([
-    getViolationsSummary({ window: "today" }),
-    getViolationsTimeseries({ window: "today", metric: "violations", grain: "hour" }),
-    getViolationsTimeseries({ window: "7d", metric: "violations", grain: "day" }),
-    getViolationsBreakdown({ window: "today" }),
-    getZoneHotspots({ window: "today", limit: 4 }),
-    getRiskMap({ window: "today" }),
+    getViolationsSummary({ window: windowParam as any }),
+    getViolationsTimeseries({ window: windowParam as any, metric: "violations", grain: "hour" }),
+    getViolationsTimeseries({ window: windowParam === "today" ? "7d" : (windowParam as any), metric: "violations", grain: "day" }),
+    getViolationsBreakdown({ window: windowParam as any }),
+    getZoneHotspots({ window: windowParam as any, limit: 4 }),
+    getRiskMap({ window: windowParam as any }),
   ]);
 
   return (
     <AnalyticsExecutiveDashboard
-      summary={summary.data}
-      hourlySeries={hourlySeries.data}
-      dailySeries={dailySeries.data}
-      breakdown={breakdown.data}
-      hotspots={hotspots.data}
-      riskMap={riskMap.data}
+      initialSummary={summary.data}
+      initialHourlySeries={hourlySeries.data}
+      initialDailySeries={dailySeries.data}
+      initialBreakdown={breakdown.data}
+      initialHotspots={hotspots.data}
+      initialRiskMap={riskMap.data}
+      initialFilters={{ window: windowParam }}
     />
   );
 }
