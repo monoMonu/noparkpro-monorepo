@@ -143,6 +143,35 @@ def _risk_level_str(risk_level_raw):
     return {"HIGH": "critical", "MEDIUM": "elevated", "LOW": "routine"}.get(risk_level_raw, "nominal")
 
 
+_WINDOW_DAYS = {"today": 1, "24h": 1, "7d": 7, "30d": 30}
+
+
+def _get_window_violations(window_key):
+    """
+    Computes REAL historical violation totals for the trailing N days from
+    the raw clustered dataset — not a prediction, not an extrapolation.
+    Uses the most recent date present in the data as the reference point
+    (the dataset is historical, Nov 2023 - Apr 2024, so "today" = last
+    recorded date, not the actual current calendar date).
+
+    Returns (total_violations, blocking_violations, days_actually_covered).
+    days_actually_covered may be less than the requested window if the
+    dataset doesn't have that much history before the reference date.
+    """
+    from predict import _BASE_DF
+
+    days = _WINDOW_DAYS.get(window_key, 1)
+    max_date = _BASE_DF["date"].max()
+    min_date_in_window = max_date - pd.Timedelta(days=days - 1)
+
+    windowed = _BASE_DF[_BASE_DF["date"] >= min_date_in_window]
+    total = int(len(windowed))
+    blocking = int(windowed["is_blocking"].sum()) if "is_blocking" in windowed.columns else 0
+    days_covered = int(windowed["date"].nunique())
+
+    return total, blocking, days_covered
+
+
 def _apply_common_filters(df, pred_col):
     """Applies zoneId, stationId, riskLevel, q query params where present."""
     zone_id = request.args.get("zoneId")
@@ -267,7 +296,7 @@ def zones_risk_map():
     result["risk_level_str"] = result["risk_level"].apply(_risk_level_str)
     filtered = _apply_common_filters(result, pred_col)
 
-    max_pred = filtered[pred_col].max() if not filtered.empty else 1
+    max_pred = float(filtered[pred_col].max()) if not filtered.empty else 1.0
 
     zones = [
         {
@@ -279,13 +308,25 @@ def zones_risk_map():
             "riskLevel": row["risk_level_str"],
             "activeViolations": int(row["violations"]),
             "estimatedViolations": int(round(row[pred_col])),
-            "density": round(float(row[pred_col]) / max_pred, 3) if max_pred else 0,
+            "density": float(round(float(row[pred_col]) / float(max_pred), 3)) if max_pred else 0.0,
         }
         for _, row in filtered.iterrows()
     ]
 
     center_lat = float(result["centroid_lat"].mean()) if not result.empty else 12.97
     center_lng = float(result["centroid_lon"].mean()) if not result.empty else 77.59
+
+    import json
+    json.dumps({
+    "viewport": {
+        "center": {
+            "lat": round(center_lat, 4),
+            "lng": round(center_lng, 4)
+        },
+        "zoom": 11
+    },
+    "zones": zones,
+    })    
 
     return ok({
         "viewport": {"center": {"lat": round(center_lat, 4), "lng": round(center_lng, 4)}, "zoom": 11},
@@ -303,7 +344,16 @@ def violations_summary():
     result, pred_col, p75, p90 = _get_hotspots()
     trends = _load_csv("data/cluster_trends.csv")
 
-    active = int(result["violations"].sum())
+    window = request.args.get("window", "24h")
+    if window not in _WINDOW_DAYS:
+        return err("INVALID_WINDOW", f"window must be one of {list(_WINDOW_DAYS.keys())}", status=400)
+
+    window_total, window_blocking, days_covered = _get_window_violations(window)
+
+    # "active" reflects the requested historical window; for window=24h this
+    # matches the original single-snapshot behavior (latest day per cluster).
+    active = window_total if window != "24h" else int(result["violations"].sum())
+
     predicted_24h = int(round(result[pred_col].sum()))
     high_risk = int((result["risk_level"] == "HIGH").sum())
     officers = int(result["recommended_officers"].sum())
@@ -313,7 +363,10 @@ def violations_summary():
     projected_7d = int(round(predicted_24h * 7 * 0.92))  # mild decay assumption, documented below
 
     data = {
+        "window": window,
         "activeViolations": active,
+        "blockingViolations": window_blocking,
+        "daysCoveredInWindow": days_covered,
         "predictedViolations24h": predicted_24h,
         "projectedViolations7d": projected_7d,
         "highRiskZoneCount": high_risk,
@@ -330,8 +383,11 @@ def violations_summary():
     }
     meta = {
         "note": "projectedViolations7d extrapolates predictedViolations24h * 7 with a flat 8% "
-                "decay assumption (illustrative, not a 7-day-ahead trained model). All other "
-                "fields are direct pipeline outputs."
+                "decay assumption (illustrative, not a 7-day-ahead trained model). "
+                "activeViolations/blockingViolations for window=7d/30d are real historical "
+                "totals from the raw clustered dataset, not predictions. daysCoveredInWindow "
+                "will be less than the requested window size near the start of the dataset "
+                "(Nov 2023) where less history is available."
     }
     return ok(data, meta)
 
@@ -341,9 +397,34 @@ def violations_summary():
 def violations_timeseries():
     metric = request.args.get("metric", "violations")
     grain = request.args.get("grain", "hour")
-    kpi = _load_json("data/kpi_dashboard.json")
+    window = request.args.get("window")
 
     data = []
+
+    if grain == "daily" and window in _WINDOW_DAYS:
+        from predict import _BASE_DF
+        days = _WINDOW_DAYS[window]
+        max_date = _BASE_DF["date"].max()
+        min_date = max_date - pd.Timedelta(days=days - 1)
+
+        windowed = _BASE_DF[_BASE_DF["date"] >= min_date]
+        daily_counts = windowed.groupby("date").size().reset_index(name="value")
+        daily_counts = daily_counts.sort_values("date")
+
+        for _, row in daily_counts.iterrows():
+            data.append({
+                "timestamp": row["date"].strftime("%Y-%m-%d"),
+                "label": row["date"].strftime("%b %d"),
+                "value": int(row["value"]),
+                "series": "actual",
+            })
+        return ok(data, {
+            "note": f"Real daily violation totals from the raw clustered dataset for the "
+                    f"trailing {window} window, ending at the dataset's latest recorded date "
+                    f"({max_date.strftime('%Y-%m-%d')}), not the current calendar date."
+        })
+
+    kpi = _load_json("data/kpi_dashboard.json")
     if grain == "hour" and kpi.get("hourly_distribution"):
         for row in kpi["hourly_distribution"]:
             hour = int(row["hour"])
@@ -520,21 +601,28 @@ def resources_summary():
     result, pred_col, p75, p90 = _get_hotspots()
     officers = int(result["recommended_officers"].sum())
     trucks = int(result["recommended_tow_trucks"].sum())
-    total = officers + trucks
+    active_total = officers + trucks
 
+    # There is no real city-wide headcount dataset, so "available" cannot be
+    # a measured number. Rather than show availableUnits == activeUnits
+    # (misleading — implies 100% deployment with zero slack), we report
+    # active deployment as the only real number, and omit a fabricated
+    # "available pool" entirely.
     data = {
-        "totalActiveResources": total,
+        "totalActiveResources": active_total,
         "availableOfficers": officers,
         "availableTowTrucks": trucks,
-        "availableUnits": total,
-        "activeUnits": total,
+        "activeUnits": active_total,
         "projectedCoverage": round(min(100, len(result[result["risk_level"] != "LOW"]) / max(1, len(result)) * 100 + 40), 1),
-        "simulatedImpactLabel": "Optimal" if total > 200 else "Moderate",
+        "simulatedImpactLabel": "Optimal" if active_total > 200 else "Moderate",
         "expectedViolationReductionPercentage": 28,
         "deltas": {"totalActiveResources": 0, "projectedCoverage": 0},
     }
     meta = {
         "note": "officers/towTrucks are real recommendations from the impact-score model. "
+                "activeUnits = officers + towTrucks currently recommended for deployment. "
+                "There is no real dataset for total city-wide force size, so an "
+                "'availableUnits' pool is intentionally not reported rather than fabricated. "
                 "projectedCoverage and expectedViolationReductionPercentage are illustrative "
                 "heuristics, not measured outcomes (no real enforcement feedback loop exists)."
     }
@@ -554,7 +642,6 @@ def allocation_plan_current():
     avg_impact = int(round(result["impact_score"].mean())) if not result.empty else 0
     high_risk = int((result["risk_level"] == "HIGH").sum())
 
-    top5 = result.head(5)
     tone_map = {"HIGH": "critical", "MEDIUM": "elevated", "LOW": "routine"}
     assignments = [
         {
@@ -567,7 +654,7 @@ def allocation_plan_current():
             "priority": tone_map.get(row["risk_level"], "routine"),
             "estimatedReductionPercentage": -min(45, int(round(row["impact_score"] * 0.5))),
         }
-        for _, row in top5.iterrows()
+        for _, row in result.iterrows()
     ]
 
     data = {

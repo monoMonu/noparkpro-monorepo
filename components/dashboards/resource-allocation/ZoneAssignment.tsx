@@ -1,9 +1,12 @@
+"use client";
+
 import { Button } from '@/components/ui/button'
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { ArrowRight, Download } from 'lucide-react'
 import React from 'react'
 import { Badge } from '@/components/ui/badge'
 import type { AllocationPlan, RiskLevel } from '@/lib/api'
+import { exportToCSV } from '@/lib/utils'
 
 type Assignment = AllocationPlan["assignments"][number]
 
@@ -25,20 +28,35 @@ function badgeTone(priority: RiskLevel) {
 }
 
 const ZoneAssignment = ({ assignments }: { assignments: Assignment[] }) => {
+  const [showAll, setShowAll] = React.useState(false);
+  const visibleAssignments = showAll ? assignments : assignments.slice(0, 5);
+
+  const handleExportCSV = () => {
+    const headers = [
+      { key: 'zoneId' as const, label: 'Zone ID' },
+      { key: 'zoneName' as const, label: 'Zone Name' },
+      { key: 'officers' as const, label: 'Officers' },
+      { key: 'towTrucks' as const, label: 'Tow Trucks' },
+      { key: 'priority' as const, label: 'Priority' },
+      { key: 'estimatedReductionPercentage' as const, label: 'Estimated Reduction (%)' }
+    ];
+    exportToCSV(assignments, 'zone_assignments.csv', headers);
+  };
+
   return (
-    <Card className="overflow-hidden overflow-y-scroll">
-      <CardHeader>
+    <Card className="h-[580px] flex flex-col overflow-hidden">
+      <CardHeader className="flex-shrink-0">
         <div>
           <CardTitle>AI Zone Assignments</CardTitle>
           <CardDescription>Recommended deployment spread for the current planning window.</CardDescription>
         </div>
-        <Button variant="ghost" size="sm" className="text-primary">
+        <Button variant="ghost" size="sm" className="text-primary" onClick={handleExportCSV}>
           <Download className="h-4 w-4" /> Export Plan
         </Button>
       </CardHeader>
-      <div className="overflow-x-auto">
+      <div className="overflow-auto flex-1 min-h-0">
         <table className="min-w-full text-left text-sm">
-          <thead className="bg-surface-container-low text-[11px] uppercase tracking-[0.22em] text-on-surface-variant">
+          <thead className="bg-surface-container-low text-[11px] uppercase tracking-[0.22em] text-on-surface-variant sticky top-0 z-10">
             <tr>
               <th className="px-4 py-3 font-medium">Zone Sector</th>
               <th className="px-4 py-3 font-medium">Officers</th>
@@ -48,7 +66,7 @@ const ZoneAssignment = ({ assignments }: { assignments: Assignment[] }) => {
             </tr>
           </thead>
           <tbody>
-            {assignments.map((zone) => (
+            {visibleAssignments.map((zone) => (
               <tr key={zone.zoneId} className="border-t border-outline-variant/70">
                 <td className="px-4 py-4 align-top">
                   <div className="font-medium text-on-surface">{zone.displayName}</div>
@@ -65,11 +83,16 @@ const ZoneAssignment = ({ assignments }: { assignments: Assignment[] }) => {
           </tbody>
         </table>
       </div>
-      <CardFooter className="flex items-center justify-between text-sm text-on-surface-variant">
-        <span>Showing top 5 zones prioritized by AI</span>
-        <button className="inline-flex items-center gap-1 text-primary hover:underline">
-          View All Zones
-        </button>
+      <CardFooter className="flex items-center justify-between text-sm text-on-surface-variant flex-shrink-0 border-t border-outline-variant/50 py-3">
+        <span>{showAll ? `Showing all ${assignments.length} zones` : `Showing top ${Math.min(5, assignments.length)} zones prioritized by AI`}</span>
+        {assignments.length > 0 && (
+          <button
+            onClick={() => setShowAll(!showAll)}
+            className="inline-flex items-center gap-1 text-primary hover:underline font-medium"
+          >
+            {showAll ? "View Less" : "View All Zones"}
+          </button>
+        )}
       </CardFooter>
     </Card>
   )

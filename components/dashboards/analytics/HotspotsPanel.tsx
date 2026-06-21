@@ -18,8 +18,8 @@ export function HotspotsPanel({ hotspots }: { hotspots: ZoneHotspot[] }) {
     <Card>
       <CardHeader>
         <div>
-          <CardTitle>Recurring Hotspots</CardTitle>
-          <CardDescription>Clusters sorted by current violation volume.</CardDescription>
+          <CardTitle>High-Risk Parking Zones</CardTitle>
+          <CardDescription>Ranked by enforcement priority; counts represent observed violations</CardDescription>
         </div>
         <ShieldAlert className="h-5 w-5 text-error" />
       </CardHeader>
@@ -28,25 +28,26 @@ export function HotspotsPanel({ hotspots }: { hotspots: ZoneHotspot[] }) {
           const tone = toneFromRisk(hotspot.riskLevel);
 
           return (
-          <div key={hotspot.zoneId} className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-on-surface">{hotspot.zoneName}</span>
-              <span className="font-medium text-on-surface-variant">{hotspot.violationCount}</span>
+            <div key={hotspot.zoneId} className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-on-surface">{hotspot.zoneName}</span>
+                <span className="font-medium text-on-surface-variant">{hotspot.violationCount}</span>
+              </div>
+              <div className="h-2 rounded-full bg-surface-container-high">
+                <div
+                  className={
+                    tone === "critical"
+                      ? "h-2 rounded-full bg-error"
+                      : tone === "default"
+                        ? "h-2 rounded-full bg-primary"
+                        : "h-2 rounded-full bg-secondary"
+                  }
+                  style={{ width: `${Math.min(100, hotspot.violationCount / 2.5)}%` }}
+                />
+              </div>
             </div>
-            <div className="h-2 rounded-full bg-surface-container-high">
-              <div
-                className={
-                  tone === "critical"
-                    ? "h-2 rounded-full bg-error"
-                    : tone === "default"
-                      ? "h-2 rounded-full bg-primary"
-                      : "h-2 rounded-full bg-secondary"
-                }
-                style={{ width: `${Math.min(100, hotspot.violationCount / 2.5)}%` }}
-              />
-            </div>
-          </div>
-        )})}
+          )
+        })}
       </CardContent>
     </Card>
   );

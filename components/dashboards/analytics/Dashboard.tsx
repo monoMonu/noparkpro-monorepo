@@ -92,7 +92,7 @@ export function AnalyticsExecutiveDashboard({
         getViolationsTimeseries({ window: w as any, metric: "violations", grain: "hour" }),
         getViolationsTimeseries({ window: w === "today" ? "7d" : (w as any), metric: "violations", grain: "day" }),
         getViolationsBreakdown({ window: w as any }),
-        getZoneHotspots({ window: w as any, limit: 4 }),
+        getZoneHotspots({ window: w as any, limit: 6 }),
         getRiskMap({ window: w as any }),
       ]);
 
@@ -208,9 +208,9 @@ export function AnalyticsExecutiveDashboard({
           ))}
         </section>
 
-      <section className="mt-4">
-        <MapPanel riskMap={riskMap} />
-      </section>
+        <section className="mt-4">
+          <MapPanel riskMap={riskMap} />
+        </section>
 
         <section className="mt-4 grid gap-4 lg:grid-cols-2">
           <HotspotsPanel hotspots={hotspots} />

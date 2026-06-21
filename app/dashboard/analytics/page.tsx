@@ -22,7 +22,7 @@ export default async function AnalyticsExecutiveSummaryPage(props: {
     getViolationsTimeseries({ window: windowParam as any, metric: "violations", grain: "hour" }),
     getViolationsTimeseries({ window: windowParam === "today" ? "7d" : (windowParam as any), metric: "violations", grain: "day" }),
     getViolationsBreakdown({ window: windowParam as any }),
-    getZoneHotspots({ window: windowParam as any, limit: 4 }),
+    getZoneHotspots({ window: windowParam as any, limit: 6 }),
     getRiskMap({ window: windowParam as any }),
   ]);
 
