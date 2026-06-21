@@ -43,7 +43,6 @@ at the bottom for what each one would need):
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "ai"))
 
 import json
 import time
@@ -54,7 +53,7 @@ import numpy as np
 import pandas as pd
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from predict import run_predictions
+from ai.predict import run_predictions
 
 app = Flask(__name__)
 CORS(app)
@@ -158,7 +157,7 @@ def _get_window_violations(window_key):
     days_actually_covered may be less than the requested window if the
     dataset doesn't have that much history before the reference date.
     """
-    from predict import _BASE_DF
+    from ai.predict import _BASE_DF
 
     days = _WINDOW_DAYS.get(window_key, 1)
     max_date = _BASE_DF["date"].max()
@@ -473,29 +472,47 @@ def violations_breakdown():
 @safe_endpoint
 def forecasts_summary():
     result, pred_col, p75, p90 = _get_hotspots()
-    high_risk = result[result["risk_level"] == "HIGH"]
-    top_zone = result.iloc[0] if not result.empty else None
+    result = result.copy()
+    result["risk_level_str"] = result["risk_level"].apply(_risk_level_str)
 
-    next_day_total = int(round(result[pred_col].sum()))
-    projected_7d = int(round(next_day_total * 7 * 0.92))
+    filtered = _apply_common_filters(result, pred_col)
+    high_risk = filtered[filtered["risk_level"] == "HIGH"]
+    top_zone = filtered.iloc[0] if not filtered.empty else None
+
+    horizon_days = request.args.get("horizonDays", default=7, type=int)
+
+    next_day_total = int(round(filtered[pred_col].sum())) if not filtered.empty else 0
+    
+    if horizon_days == 1:
+        projected = next_day_total
+    elif horizon_days == 7:
+        projected = int(round(next_day_total * 7 * 0.92))
+    elif horizon_days == 30:
+        projected = int(round(next_day_total * 30 * 0.85))
+    else:
+        projected = int(round(next_day_total * horizon_days * 0.90))
 
     data = {
-        "horizonDays": 1,
-        "projectedViolations": next_day_total,
-        "projectedViolations7d": projected_7d,
+        "horizonDays": horizon_days,
+        "projectedViolations": projected,
         "projectedViolationsDeltaPercentage": 0.0,
         "highRiskZones": int(len(high_risk)),
-        "monitoredZones": int(len(result)),
+        "monitoredZones": int(len(filtered)),
         "averageModelConfidence": round(MODEL_R2 * 100, 1),
         "automationReady": True,
         "primaryRiskZoneId": top_zone["zoneId"] if top_zone is not None else None,
         "primaryRiskZoneName": top_zone["police_station"] if top_zone is not None else None,
         "generatedAt": now_iso(),
     }
+    
+    if horizon_days == 7:
+        data["projectedViolations7d"] = projected
+    else:
+        data["projectedViolations7d"] = None
+
     meta = {
-        "note": "horizonDays is 1 (the trained model predicts one day ahead per cluster). "
-                "projectedViolations7d extrapolates the next-day total with a flat 8% decay "
-                "assumption for display purposes only — it is not a 7-day-ahead trained forecast."
+        "note": "horizonDays is dynamic. projectedViolations extrapolates the next-day total "
+                "with decay assumptions for display purposes only."
     }
     return ok(data, meta)
 
@@ -542,6 +559,16 @@ def forecasts_list():
     filtered = _apply_common_filters(result, pred_col)
     page_df, meta = _paginate(filtered)
 
+    horizon_days = request.args.get("horizonDays", default=7, type=int)
+    if horizon_days == 1:
+        scale = 1.0
+    elif horizon_days == 7:
+        scale = 7 * 0.92
+    elif horizon_days == 30:
+        scale = 30 * 0.85
+    else:
+        scale = horizon_days * 0.90
+
     today = datetime.now(IST).strftime("%Y%m%d")
     action_map = {"HIGH": "deploy_unit", "MEDIUM": "monitor", "LOW": "automated"}
     impact_map = {"HIGH": "severe", "MEDIUM": "moderate", "LOW": "low"}
@@ -551,7 +578,7 @@ def forecasts_list():
             "id": f"FC-{today}-{row['zoneId']}",
             "zoneId": row["zoneId"],
             "zoneName": row["police_station"],
-            "estimatedViolations": int(round(row[pred_col])),
+            "estimatedViolations": int(round(row[pred_col] * scale)),
             "confidence": int(round(MODEL_R2 * 100)),
             "riskLevel": row["risk_level_str"],
             "congestionImpact": impact_map.get(row["risk_level"], "low"),
@@ -642,7 +669,6 @@ def allocation_plan_current():
     avg_impact = int(round(result["impact_score"].mean())) if not result.empty else 0
     high_risk = int((result["risk_level"] == "HIGH").sum())
 
-    top5 = result.head(5)
     tone_map = {"HIGH": "critical", "MEDIUM": "elevated", "LOW": "routine"}
     assignments = [
         {
@@ -655,7 +681,7 @@ def allocation_plan_current():
             "priority": tone_map.get(row["risk_level"], "routine"),
             "estimatedReductionPercentage": -min(45, int(round(row["impact_score"] * 0.5))),
         }
-        for _, row in top5.iterrows()
+        for _, row in result.iterrows()
     ]
 
     data = {
