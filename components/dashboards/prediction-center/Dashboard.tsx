@@ -28,6 +28,8 @@ export function PredictionCenterDashboard({
 }: PredictionCenterDashboardProps) {
   const [horizonVal, setHorizonVal] = useState(initialFilters.horizonDays || 7);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [riskFilter, setRiskFilter] = useState<string>("");
+  const [searchQuery, setSearchQuery] = useState<string>("");
 
   const [summary, setSummary] = useState<ForecastSummary>(initialSummary);
   const [confidence, setConfidence] = useState<ForecastConfidencePoint[]>(initialConfidence);
@@ -37,6 +39,7 @@ export function PredictionCenterDashboard({
   const [error, setError] = useState<string | null>(null);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const isMounted = useRef(false);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -54,14 +57,14 @@ export function PredictionCenterDashboard({
     30: "30 Days",
   };
 
-  const fetchHorizonPredictions = async (h: number) => {
+  const fetchPredictions = async (h: number, risk: string, query: string) => {
     setLoading(true);
     setError(null);
     try {
       const [summaryRes, confidenceRes, forecastsRes] = await Promise.all([
-        getForecastsSummary({ horizonDays: h }),
-        getForecastsConfidence({ horizonDays: h }),
-        getForecasts({ horizonDays: h, pageSize: 25 }),
+        getForecastsSummary({ horizonDays: h, riskLevel: risk as any, q: query }),
+        getForecastsConfidence({ horizonDays: h, riskLevel: risk as any, q: query }),
+        getForecasts({ horizonDays: h, riskLevel: risk as any, q: query, pageSize: 25 }),
       ]);
 
       setSummary(summaryRes.data);
@@ -71,8 +74,10 @@ export function PredictionCenterDashboard({
       // Sync to URL
       const params = new URLSearchParams();
       if (h !== 7) params.set("horizonDays", String(h));
-      const query = params.toString();
-      const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+      if (risk) params.set("riskLevel", risk);
+      if (query) params.set("q", query);
+      const queryString = params.toString();
+      const newUrl = queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname;
       window.history.replaceState(null, "", newUrl);
     } catch (err: any) {
       console.error(err);
@@ -82,9 +87,20 @@ export function PredictionCenterDashboard({
     }
   };
 
+  useEffect(() => {
+    if (!isMounted.current) {
+      isMounted.current = true;
+      return;
+    }
+    const timer = setTimeout(() => {
+      fetchPredictions(horizonVal, riskFilter, searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [horizonVal, riskFilter, searchQuery]);
+
   const handleHorizonChange = (h: number) => {
     setHorizonVal(h);
-    fetchHorizonPredictions(h);
   };
 
   const handleRetrain = () => {
@@ -175,7 +191,13 @@ export function PredictionCenterDashboard({
         </section>
 
         <section className="mt-4">
-          <ForecastLedger forecasts={forecasts} />
+          <ForecastLedger
+            forecasts={forecasts}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            riskFilter={riskFilter}
+            onRiskChange={setRiskFilter}
+          />
         </section>
       </div>
     </>
