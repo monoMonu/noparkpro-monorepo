@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { getDashboardRoute, navItems, sidebarFooterItems, topbarIcons } from "./data";
+import { AssistantChat } from "@/components/ui/AssistantChat";
 
 type ShellProps = {
   children: ReactNode;
@@ -115,6 +116,7 @@ export function DashboardShell({ children }: ShellProps) {
           </div>
         </main>
       </div>
+      <AssistantChat />
     </div>
   );
 }

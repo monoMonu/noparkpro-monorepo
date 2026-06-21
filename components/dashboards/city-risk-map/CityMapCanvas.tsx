@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Send, Eye } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,12 @@ export function CityMapCanvas({ riskMap, breakdown }: { riskMap: RiskMap; breakd
   const [selectedZoneId, setSelectedZoneId] = useState<string>(
     riskMap.zones[0]?.zoneId || ""
   );
+
+  useEffect(() => {
+    if (selectedZoneId) {
+      localStorage.setItem("noparkpro_selected_zone_id", selectedZoneId);
+    }
+  }, [selectedZoneId]);
 
   const selectedZone = riskMap.zones.find(z => z.zoneId === selectedZoneId) || riskMap.zones[0];
   const visibleBreakdown = breakdown.slice(0, 3);
