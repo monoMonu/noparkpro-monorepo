@@ -112,7 +112,7 @@ export function PredictionCenterDashboard({
       <div className="mb-6 flex flex-wrap justify-end gap-2">
         {/* Forecast Horizon Dropdown */}
         <div ref={dropdownRef} className="relative">
-          <Button
+          {/* <Button
             variant="secondary"
             className="min-w-36 flex items-center justify-between gap-2"
             onClick={() => setShowDropdown(!showDropdown)}
@@ -122,7 +122,7 @@ export function PredictionCenterDashboard({
               {horizonLabelMap[horizonVal] || "7 Days"}
             </span>
             <ChevronDown className="h-4 w-4 opacity-70" />
-          </Button>
+          </Button> */}
           {showDropdown && (
             <div className="absolute right-0 mt-1 z-50 min-w-40 rounded-md border border-outline-variant bg-surface py-1 shadow-lg">
               {Object.entries(horizonLabelMap).map(([key, label]) => (
@@ -183,7 +183,7 @@ export function PredictionCenterDashboard({
                 </span>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex items-center flex-1 h-full">
               <ConfidenceChart data={confidence} />
             </CardContent>
           </Card>

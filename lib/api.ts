@@ -36,6 +36,7 @@ export type ZoneHotspot = {
   riskScore: number;
   riskLevel: RiskLevel;
   summary: string;
+  daysCoveredInWindow?: number;
 };
 
 export type RiskMapZone = {
@@ -259,6 +260,24 @@ export async function getResourcesSummary(query?: Pick<CommonQuery, "stationId" 
   return apiGet<ResourcesSummary>("/api/v1/resources/summary", query);
 }
 
+export type AnalyticsSummary = {
+  window: "today" | "7d" | "30d";
+  daysCoveredInWindow: number;
+  totalViolationsInWindow: number;
+  overallCityRiskLevel: RiskLevel;
+  overallCityRiskScore: number;
+  criticalZonesToday: number;
+  recommendedDeployments: number;
+  hourlyDistribution: Array<{ hour: number; violations: number }>;
+  dailyTrend: Array<{ date: string; violations: number }>;
+  topZones: Array<{ police_station: string; violations: number }>;
+};
+
 export async function getCurrentAllocationPlan(query?: { planningWindow?: string; stationId?: string; zoneId?: string }) {
   return apiGet<AllocationPlan>("/api/v1/allocation-plans/current", query);
 }
+
+export async function getAnalyticsSummary(query?: Pick<CommonQuery, "window">) {
+  return apiGet<AnalyticsSummary>("/api/v1/analytics/summary", query);
+}
+

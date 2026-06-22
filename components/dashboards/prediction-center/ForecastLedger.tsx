@@ -62,7 +62,7 @@ export function ForecastLedger({
           <thead className="bg-surface-container-low font-mono text-xs uppercase tracking-[0.18em] text-on-surface-variant">
             <tr>
               <th className="px-5 py-3">Zone Identifier</th>
-              <th className="px-5 py-3">Est. Violations</th>
+              <th className="px-5 py-3">Est. Violations (Next 24h)</th>
               <th className="px-5 py-3">Confidence %</th>
               <th className="px-5 py-3">Risk Level</th>
               <th className="px-5 py-3">Congestion Impact</th>

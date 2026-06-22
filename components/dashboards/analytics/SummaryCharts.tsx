@@ -34,7 +34,7 @@ export function SummaryCharts({
       <Card className="flex flex-col">
         <CardHeader>
           <div>
-            <CardTitle>Monthly Violation History</CardTitle>
+            <CardTitle>Violation History</CardTitle>
             <CardDescription>Historical variation in recorded variations across the dataset.</CardDescription>
           </div>
           <div className="text-xs font-medium text-on-surface-variant">~{trendDelta.toFixed(1)}%</div>

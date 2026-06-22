@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { AlertTriangle, Crosshair, ShieldCheck, ChevronDown, CalendarRange } from "lucide-react";
+import { AlertTriangle, Crosshair, ShieldCheck, ChevronDown, CalendarRange, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { KPICard } from "./KPICard";
 import { HotspotsPanel } from "./HotspotsPanel";
@@ -9,11 +9,7 @@ import { MapPanel } from "./MapPanel";
 import { SummaryCharts } from "./SummaryCharts";
 import ViolationBreakdown from "./ViolationBreakdown";
 import {
-  getRiskMap,
-  getViolationsBreakdown,
-  getViolationsSummary,
-  getViolationsTimeseries,
-  getZoneHotspots,
+  getAnalyticsSummary,
 } from "@/lib/api";
 import type {
   RiskMap,
@@ -21,14 +17,13 @@ import type {
   ViolationTimeseriesPoint,
   ViolationsSummary,
   ZoneHotspot,
+  AnalyticsSummary,
+  RiskMapZone,
 } from "@/lib/api";
 
 type AnalyticsExecutiveDashboardProps = {
-  initialSummary: ViolationsSummary;
-  initialHourlySeries: ViolationTimeseriesPoint[];
-  initialDailySeries: ViolationTimeseriesPoint[];
+  initialAnalyticsSummary: AnalyticsSummary;
   initialBreakdown: ViolationBreakdownItem[];
-  initialHotspots: ZoneHotspot[];
   initialRiskMap: RiskMap;
   initialFilters: {
     window: string;
@@ -43,24 +38,85 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("en-IN").format(value);
 }
 
+function formatDateLabel(dateStr: string) {
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;
+  return date.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+}
+
+const mapHourly = (dist: Array<{ hour: number; violations: number }>): ViolationTimeseriesPoint[] =>
+  dist.map((item) => ({
+    label: `${String(item.hour).padStart(2, "0")}:00`,
+    value: item.violations,
+    series: "actual",
+  }));
+
+const mapDaily = (trend: Array<{ date: string; violations: number }>): ViolationTimeseriesPoint[] =>
+  trend.map((item) => ({
+    timestamp: item.date,
+    label: formatDateLabel(item.date),
+    value: item.violations,
+    series: "actual",
+    alpha: item.violations,
+    beta: item.violations,
+  }));
+
+const mapHotspots = (
+  topZones: Array<{ police_station: string; violations: number }>,
+  zones: RiskMapZone[]
+): ZoneHotspot[] =>
+  topZones.map((z, index) => {
+    const match = zones.find((r) => r.zoneName === z.police_station);
+    return {
+      zoneId: match?.zoneId || `top-${index}`,
+      rank: index + 1,
+      zoneName: z.police_station,
+      shortName: z.police_station.slice(0, 20),
+      violationCount: z.violations,
+      estimatedViolations: match?.estimatedViolations || 0,
+      riskScore: match?.riskScore || 0,
+      riskLevel: match?.riskLevel || "routine",
+      summary: `Est. ${match?.estimatedViolations || 0} violations`,
+    };
+  });
+
 export function AnalyticsExecutiveDashboard({
-  initialSummary,
-  initialHourlySeries,
-  initialDailySeries,
+  initialAnalyticsSummary,
   initialBreakdown,
-  initialHotspots,
   initialRiskMap,
   initialFilters,
 }: AnalyticsExecutiveDashboardProps) {
   const [windowVal, setWindowVal] = useState(initialFilters.window || "today");
   const [showDropdown, setShowDropdown] = useState(false);
 
-  const [summary, setSummary] = useState<ViolationsSummary>(initialSummary);
-  const [hourlySeries, setHourlySeries] = useState<ViolationTimeseriesPoint[]>(initialHourlySeries);
-  const [dailySeries, setDailySeries] = useState<ViolationTimeseriesPoint[]>(initialDailySeries);
-  const [breakdown, setBreakdown] = useState<ViolationBreakdownItem[]>(initialBreakdown);
-  const [hotspots, setHotspots] = useState<ZoneHotspot[]>(initialHotspots);
-  const [riskMap, setRiskMap] = useState<RiskMap>(initialRiskMap);
+  const [summary, setSummary] = useState<ViolationsSummary>({
+    activeViolations: initialAnalyticsSummary.totalViolationsInWindow,
+    predictedViolations24h: 0, // Not explicitly used in the card view main metrics but kept for typing compatibility
+    projectedViolations7d: 0,
+    highRiskZoneCount: initialAnalyticsSummary.criticalZonesToday,
+    criticalZoneCount: initialAnalyticsSummary.criticalZonesToday,
+    recommendedDeploymentCount: initialAnalyticsSummary.recommendedDeployments,
+    cityRiskScore: initialAnalyticsSummary.overallCityRiskScore,
+    cityRiskLevel: initialAnalyticsSummary.overallCityRiskLevel,
+    deltas: {
+      activeViolations: 0,
+      cityRiskScore: 0,
+      projectedViolations7dPercentage: 0,
+    },
+    generatedAt: new Date().toISOString(),
+  });
+
+  const [hourlySeries, setHourlySeries] = useState<ViolationTimeseriesPoint[]>(
+    mapHourly(initialAnalyticsSummary.hourlyDistribution)
+  );
+  const [dailySeries, setDailySeries] = useState<ViolationTimeseriesPoint[]>(
+    mapDaily(initialAnalyticsSummary.dailyTrend)
+  );
+  const [breakdown] = useState<ViolationBreakdownItem[]>(initialBreakdown);
+  const [hotspots, setHotspots] = useState<ZoneHotspot[]>(
+    mapHotspots(initialAnalyticsSummary.topZones, initialRiskMap.zones)
+  );
+  const [riskMap] = useState<RiskMap>(initialRiskMap);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,21 +143,29 @@ export function AnalyticsExecutiveDashboard({
     setLoading(true);
     setError(null);
     try {
-      const [summaryRes, hourlyRes, dailyRes, breakdownRes, hotspotsRes, riskMapRes] = await Promise.all([
-        getViolationsSummary({ window: w as any }),
-        getViolationsTimeseries({ window: w as any, metric: "violations", grain: "hour" }),
-        getViolationsTimeseries({ window: w === "today" ? "7d" : (w as any), metric: "violations", grain: "day" }),
-        getViolationsBreakdown({ window: w as any }),
-        getZoneHotspots({ window: w as any, limit: 6 }),
-        getRiskMap({ window: w as any }),
-      ]);
+      const summaryRes = await getAnalyticsSummary({ window: w as any });
+      const summaryData = summaryRes.data;
 
-      setSummary(summaryRes.data);
-      setHourlySeries(hourlyRes.data);
-      setDailySeries(dailyRes.data);
-      setBreakdown(breakdownRes.data);
-      setHotspots(hotspotsRes.data);
-      setRiskMap(riskMapRes.data);
+      setSummary({
+        activeViolations: summaryData.totalViolationsInWindow,
+        predictedViolations24h: 0,
+        projectedViolations7d: 0,
+        highRiskZoneCount: summaryData.criticalZonesToday,
+        criticalZoneCount: summaryData.criticalZonesToday,
+        recommendedDeploymentCount: summaryData.recommendedDeployments,
+        cityRiskScore: summaryData.overallCityRiskScore,
+        cityRiskLevel: summaryData.overallCityRiskLevel,
+        deltas: {
+          activeViolations: 0,
+          cityRiskScore: 0,
+          projectedViolations7dPercentage: 0,
+        },
+        generatedAt: new Date().toISOString(),
+      });
+
+      setHourlySeries(mapHourly(summaryData.hourlyDistribution));
+      setDailySeries(mapDaily(summaryData.dailyTrend));
+      setHotspots(mapHotspots(summaryData.topZones, riskMap.zones));
 
       // Sync to URL
       const params = new URLSearchParams();
@@ -128,7 +192,7 @@ export function AnalyticsExecutiveDashboard({
       label: "Overall City Risk Level",
       value: titleCase(summary.cityRiskLevel),
       detail: `${summary.cityRiskScore}/100`,
-      subdetail: `${summary.deltas.cityRiskScore >= 0 ? "+" : ""}${summary.deltas.cityRiskScore} pts VS baseline`,
+      subdetail: `Risk Score (Next-day forecast)`,
       tone: "border-t-error",
       icon: AlertTriangle,
     },
@@ -143,8 +207,8 @@ export function AnalyticsExecutiveDashboard({
     {
       label: "Recommended Deployments",
       value: formatNumber(summary.recommendedDeploymentCount),
-      detail: `${summary.deltas.activeViolations >= 0 ? "+" : ""}${summary.deltas.activeViolations} active delta`,
-      subdetail: "Optimal coverage met",
+      detail: `Optimal coverage targets`,
+      subdetail: "officers recommended",
       tone: "border-t-primary",
       icon: ShieldCheck,
     },
@@ -152,7 +216,14 @@ export function AnalyticsExecutiveDashboard({
 
   return (
     <>
-      <div className="mb-6 flex flex-wrap justify-end gap-2">
+      <div className="mb-6 flex flex-wrap justify-between items-center gap-4">
+        <div className="flex items-start gap-2.5 rounded-lg border border-outline-variant bg-surface-container-low p-3 text-xs text-on-surface-variant max-w-xl">
+          <Info className="mt-0.5 h-4 w-4 text-primary flex-shrink-0" />
+          <div>
+            <span className="font-semibold text-on-surface">Forecasting Note:</span> KPIs (Risk Level, Critical Zones, and Recommended Deployments) show tomorrow's forecast predictions and do not change with the historical dropdown window.
+          </div>
+        </div>
+
         <div ref={dropdownRef} className="relative">
           <Button
             variant="secondary"

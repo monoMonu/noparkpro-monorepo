@@ -24,7 +24,7 @@ export function HotspotsPanel({ hotspots }: { hotspots: ZoneHotspot[] }) {
         <ShieldAlert className="h-5 w-5 text-error" />
       </CardHeader>
       <CardContent className="space-y-4">
-        {hotspots.map((hotspot) => {
+        {hotspots.slice(0, 8).map((hotspot) => {
           const tone = toneFromRisk(hotspot.riskLevel);
 
           return (

@@ -19,7 +19,7 @@ function toneClass(riskLevel: RiskLevel) {
   return "border-l-tertiary";
 }
 
-export function HotspotSidebar({ hotspots }: { hotspots: ZoneHotspot[] }) {
+export function HotspotSidebar({ hotspots, currentWindow }: { hotspots: ZoneHotspot[]; currentWindow?: string }) {
   return (
     <aside className="border-l border-outline-variant bg-background p-5 lg:min-h-[740px]">
       <h2 className="text-base font-semibold">Active Hotspots</h2>
@@ -39,8 +39,15 @@ export function HotspotSidebar({ hotspots }: { hotspots: ZoneHotspot[] }) {
                   <span className="mr-2 text-primary">#{item.rank}</span>
                   {item.shortName || item.zoneName}
                 </div>
-                <div className="mt-3 text-on-surface-variant text-sm">Est. Violations: {item.estimatedViolations}</div>
-                <div className="text-on-surface-variant text-sm">Obs. Violations: {item.violationCount}</div>
+                <div className="mt-3 text-on-surface-variant text-sm">Est. Violations (Next 24h): {item.estimatedViolations}</div>
+                <div className="text-on-surface-variant text-sm">
+                  Obs. Violations: {item.violationCount}
+                  {currentWindow === "7d" && item.daysCoveredInWindow !== undefined && item.daysCoveredInWindow < 7 && (
+                    <span className="ml-1.5 text-xs text-secondary font-medium block lg:inline">
+                      ({item.daysCoveredInWindow} days of data)
+                    </span>
+                  )}
+                </div>
               </div>
               <div>
                 {badge ? <Badge tone={badge === "Critical" ? "critical" : badge === "Elevated" ? "elevated" : "muted"}>{badge}</Badge> : null}

@@ -1,16 +1,15 @@
 'use client'
 
 import { useState, useEffect } from "react";
-import { Send, Eye } from "lucide-react";
+import { Send, Eye, Activity, MapPin, TrendingUp } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import type { RiskMap, ViolationBreakdownItem } from "@/lib/api";
+import type { RiskMap } from "@/lib/api";
 import Map from "@/components/maps/Map";
 import { cn } from "@/lib/utils";
 
-const breakdownColors = ["bg-error", "bg-tertiary", "bg-primary", "bg-outline"];
-export function CityMapCanvas({ riskMap, breakdown }: { riskMap: RiskMap; breakdown: ViolationBreakdownItem[] }) {
+export function CityMapCanvas({ riskMap }: { riskMap: RiskMap }) {
   const [selectedZoneId, setSelectedZoneId] = useState<string>(
     riskMap.zones[0]?.zoneId || ""
   );
@@ -22,7 +21,6 @@ export function CityMapCanvas({ riskMap, breakdown }: { riskMap: RiskMap; breakd
   }, [selectedZoneId]);
 
   const selectedZone = riskMap.zones.find(z => z.zoneId === selectedZoneId) || riskMap.zones[0];
-  const visibleBreakdown = breakdown.slice(0, 3);
 
   const handleDispatch = () => {
     if (selectedZone) {
@@ -32,7 +30,7 @@ export function CityMapCanvas({ riskMap, breakdown }: { riskMap: RiskMap; breakd
 
   const handleDetails = () => {
     if (selectedZone) {
-      alert(`Details for ${selectedZone.zoneName}:\nRisk Level: ${selectedZone.riskLevel.toUpperCase()}\nRisk Score: ${selectedZone.riskScore}%\nActive Violations: ${selectedZone.activeViolations}\nEstimated Violations: ${selectedZone.estimatedViolations}`);
+      alert(`Details for ${selectedZone.zoneName}:\nRisk Level: ${selectedZone.riskLevel.toUpperCase()}\nRisk Score: ${selectedZone.riskScore}%\nActive Violations: ${selectedZone.activeViolations}\nEstimated Violations (Next 24h): ${selectedZone.estimatedViolations}`);
     }
   };
 
@@ -77,19 +75,58 @@ export function CityMapCanvas({ riskMap, breakdown }: { riskMap: RiskMap; breakd
               {selectedZone.riskScore}% Risk
             </div>
           </div>
-          <div className="space-y-3">
-            {visibleBreakdown.map((risk, index) => (
-              <div key={risk.type} className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span>{risk.label}</span>
-                  <span className="font-mono">{risk.percentage}%</span>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg bg-surface-container-high p-3 border border-outline-variant/30">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-on-surface-variant mb-1">
+                  <Activity className="h-3.5 w-3.5 text-primary" />
+                  <span>Active Violations</span>
                 </div>
-                <div className="h-2 rounded-full bg-surface-container-high">
-                  <div className={`${breakdownColors[index] ?? "bg-outline"} h-2 rounded-full`} style={{ width: `${risk.percentage}%` }} />
+                <div className="font-mono text-xl font-bold text-on-surface">
+                  {selectedZone.activeViolations}
                 </div>
               </div>
-            ))}
+
+              <div className="rounded-lg bg-surface-container-high p-3 border border-outline-variant/30">
+                <div className="flex items-center gap-1.5 text-xs font-medium text-on-surface-variant mb-1">
+                  <TrendingUp className="h-3.5 w-3.5 text-tertiary" />
+                  <span>Predicted (24h)</span>
+                </div>
+                <div className="font-mono text-xl font-bold text-on-surface">
+                  {selectedZone.estimatedViolations}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs font-medium text-on-surface-variant">
+                <span>Violation Density</span>
+                <span className="font-mono text-on-surface font-semibold">
+                  {(selectedZone.density * 100).toFixed(1)}%
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-surface-container-high">
+                <div 
+                  className={cn(
+                    "h-2 rounded-full",
+                    selectedZone.density > 0.7 
+                      ? "bg-error" 
+                      : selectedZone.density > 0.4 
+                        ? "bg-tertiary" 
+                        : "bg-primary"
+                  )} 
+                  style={{ width: `${Math.min(100, selectedZone.density * 100)}%` }} 
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-xs text-on-surface-variant/80 border-t border-outline-variant/50 pt-2 font-mono">
+              <MapPin className="h-3.5 w-3.5 text-outline flex-shrink-0" />
+              <span>Coords: {selectedZone.lat.toFixed(4)}°, {selectedZone.lng.toFixed(4)}°</span>
+            </div>
           </div>
+
           <div className="mt-5 grid grid-cols-2 gap-2">
             <Button onClick={handleDispatch}>
               <Send className="h-4 w-4" /> Dispatch

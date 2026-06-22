@@ -121,7 +121,7 @@ export default function ResourceAllocation({
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div ref={dropdownRef} className="relative">
-          <Button
+          {/* <Button
             variant="secondary"
             size="sm"
             className="flex items-center gap-2"
@@ -129,7 +129,7 @@ export default function ResourceAllocation({
           >
             <span>{windowLabelMap[windowVal] || "Today"}</span>
             <ChevronDown className="h-4 w-4 opacity-70" />
-          </Button>
+          </Button> */}
           {showWindowDropdown && (
             <div className="absolute left-0 mt-1 z-50 min-w-40 rounded-md border border-outline-variant bg-surface py-1 shadow-lg">
               {Object.entries(windowLabelMap).map(([key, label]) => (

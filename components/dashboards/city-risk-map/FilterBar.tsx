@@ -40,7 +40,6 @@ export function FilterBar({
   const windowLabelMap: Record<string, string> = {
     today: "Today",
     "7d": "Last 7 Days",
-    "30d": "Last 30 Days",
   };
 
   const getStationLabel = () => {
