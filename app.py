@@ -64,8 +64,20 @@ MODEL_R2 = 0.944
 BASELINE_R2 = 0.937
 MODEL_MAE = 11.74
 
-_CACHE = {"result": None, "pred_col": None, "p75": None, "p90": None, "timestamp": 0}
+_CACHE = {}
 _CACHE_TTL_SECONDS = 300
+
+# Window options for the per-CLUSTER City Risk Map endpoints only
+# (zones_list, zone_detail, zones_hotspots, zones_risk_map).
+# Deliberately NOT the same as _WINDOW_DAYS below (which includes 30d) —
+# verified against the real dataset that 250 of 364 clusters (69%) have
+# fewer than 30 distinct days of activity in the full 150-day dataset.
+# A 30-day per-cluster total would be empty or near-empty for most
+# clusters, misrepresenting sparse data as a quiet month. _WINDOW_DAYS
+# below is fine for 30d because it's used for CITY-WIDE totals
+# (violations_summary, violations_timeseries), which don't have this
+# per-cluster sparsity problem.
+CLUSTER_WINDOW_DAYS = {"today": 1, "7d": 7}
 
 
 # ============================================================
@@ -116,25 +128,48 @@ def _load_csv(path):
     return pd.read_csv(path)
 
 
-def _get_hotspots():
+def _get_hotspots(window_days=1):
     """
-    Cached single source of truth for zone/forecast/resource endpoints.
+    Cached single source of truth for zone/forecast/resource endpoints,
+    cached separately PER window_days value so switching the City Risk Map
+    filter doesn't evict the other window's cache.
+
     DBSCAN + XGBoost prediction is expensive — cache for _CACHE_TTL_SECONDS
-    so concurrent dashboard loads share one model run.
+    so concurrent dashboard loads with the same window share one model run.
     """
     now = time.time()
-    if _CACHE["result"] is not None and (now - _CACHE["timestamp"]) < _CACHE_TTL_SECONDS:
-        return _CACHE["result"], _CACHE["pred_col"], _CACHE["p75"], _CACHE["p90"]
+    cache_key = f"window_{window_days}"
+    cached = _CACHE.get(cache_key)
+    if cached is not None and (now - cached["timestamp"]) < _CACHE_TTL_SECONDS:
+        return cached["result"], cached["pred_col"], cached["p75"], cached["p90"]
 
-    result, p75, p90 = run_predictions()
+    from ai.predict import run_predictions_windowed
+    result, p75, p90 = run_predictions_windowed(window_days)
     result = result.sort_values("priority_rank").reset_index(drop=True)
     pred_col = "predicted_violations_raw" if "predicted_violations_raw" in result.columns else "predicted_violations"
 
     # zoneId convention: Z-<cluster_id> to match the spec's Z-01A style without inventing fake IDs
     result["zoneId"] = "Z-" + result["cluster_id"].astype(str)
 
-    _CACHE.update({"result": result, "pred_col": pred_col, "p75": p75, "p90": p90, "timestamp": now})
+    _CACHE[cache_key] = {"result": result, "pred_col": pred_col, "p75": p75, "p90": p90, "timestamp": now}
     return result, pred_col, p75, p90
+
+
+def _parse_cluster_window():
+    """
+    Reads ?window= for the per-cluster City Risk Map endpoints and validates
+    it against CLUSTER_WINDOW_DAYS (today/7d only — see comment above).
+    Returns (window_key, window_days) on success, or raises ValueError with
+    a message suitable for an INVALID_WINDOW error response.
+    """
+    window_key = request.args.get("window", "today")
+    if window_key not in CLUSTER_WINDOW_DAYS:
+        raise ValueError(
+            f"window must be one of {list(CLUSTER_WINDOW_DAYS.keys())} "
+            f"(30d is not supported for per-zone data — insufficient real "
+            f"history per cluster; use violations/summary for 30d city-wide totals)"
+        )
+    return window_key, CLUSTER_WINDOW_DAYS[window_key]
 
 
 def _risk_level_str(risk_level_raw):
@@ -211,12 +246,18 @@ def _paginate(df):
 @app.route("/api/v1/zones", methods=["GET"])
 @safe_endpoint
 def zones_list():
-    result, pred_col, p75, p90 = _get_hotspots()
+    try:
+        window_key, window_days = _parse_cluster_window()
+    except ValueError as e:
+        return err("INVALID_WINDOW", str(e), status=400)
+
+    result, pred_col, p75, p90 = _get_hotspots(window_days)
     result = result.copy()
     result["risk_level_str"] = result["risk_level"].apply(_risk_level_str)
 
     filtered = _apply_common_filters(result, pred_col)
     page_df, meta = _paginate(filtered)
+    meta["window"] = window_key
 
     data = [
         {
@@ -237,12 +278,18 @@ def zones_list():
 @app.route("/api/v1/zones/<zone_id>", methods=["GET"])
 @safe_endpoint
 def zone_detail(zone_id):
-    result, pred_col, p75, p90 = _get_hotspots()
+    try:
+        window_key, window_days = _parse_cluster_window()
+    except ValueError as e:
+        return err("INVALID_WINDOW", str(e), status=400)
+
+    result, pred_col, p75, p90 = _get_hotspots(window_days)
     match = result[result["zoneId"] == zone_id]
     if match.empty:
         return err("NOT_FOUND", f"Zone {zone_id} not found.", status=404)
 
     row = match.iloc[0]
+    days_covered = int(row["days_covered_in_window"]) if "days_covered_in_window" in row else 1
     data = {
         "id": row["zoneId"],
         "name": row["police_station"],
@@ -252,17 +299,30 @@ def zone_detail(zone_id):
         "riskScore": int(row["impact_score"]),
         "estimatedViolations24h": int(round(row[pred_col])),
         "activeViolations": int(row["violations"]),
+        "daysCoveredInWindow": days_covered,
         "availableUnitsNearby": int(row["recommended_officers"] + row["recommended_tow_trucks"]),
         "center": {"lat": float(row["centroid_lat"]), "lng": float(row["centroid_lon"])},
         "updatedAt": now_iso(),
     }
-    return ok(data)
+    meta = {
+        "window": window_key,
+        "note": "activeViolations reflects the selected window (real historical sum). "
+                "riskScore/estimatedViolations24h are always the next-day forecast and "
+                "do not change with window — there is one trained model, not a "
+                "per-window forecast."
+    }
+    return ok(data, meta)
 
 
 @app.route("/api/v1/zones/hotspots", methods=["GET"])
 @safe_endpoint
 def zones_hotspots():
-    result, pred_col, p75, p90 = _get_hotspots()
+    try:
+        window_key, window_days = _parse_cluster_window()
+    except ValueError as e:
+        return err("INVALID_WINDOW", str(e), status=400)
+
+    result, pred_col, p75, p90 = _get_hotspots(window_days)
     result = result.copy()
     result["risk_level_str"] = result["risk_level"].apply(_risk_level_str)
 
@@ -277,6 +337,7 @@ def zones_hotspots():
             "zoneName": row["police_station"],
             "shortName": row["police_station"][:20],
             "violationCount": int(row["violations"]),
+            "daysCoveredInWindow": int(row["days_covered_in_window"]) if "days_covered_in_window" in row else 1,
             "estimatedViolations": int(round(row[pred_col])),
             "riskScore": int(row["impact_score"]),
             "riskLevel": row["risk_level_str"],
@@ -284,13 +345,26 @@ def zones_hotspots():
         }
         for _, row in top.iterrows()
     ]
-    return ok(data, {"total": len(filtered)})
+    meta = {
+        "total": len(filtered),
+        "window": window_key,
+        "note": "violationCount reflects the selected window (real historical sum). "
+                "estimatedViolations/riskScore are always the next-day forecast and do "
+                "not change with window — there is one trained model, not a per-window "
+                "forecast."
+    }
+    return ok(data, meta)
 
 
 @app.route("/api/v1/zones/risk-map", methods=["GET"])
 @safe_endpoint
 def zones_risk_map():
-    result, pred_col, p75, p90 = _get_hotspots()
+    try:
+        window_key, window_days = _parse_cluster_window()
+    except ValueError as e:
+        return err("INVALID_WINDOW", str(e), status=400)
+
+    result, pred_col, p75, p90 = _get_hotspots(window_days)
     result = result.copy()
     result["risk_level_str"] = result["risk_level"].apply(_risk_level_str)
     filtered = _apply_common_filters(result, pred_col)
@@ -306,6 +380,7 @@ def zones_risk_map():
             "riskScore": int(row["impact_score"]),
             "riskLevel": row["risk_level_str"],
             "activeViolations": int(row["violations"]),
+            "daysCoveredInWindow": int(row["days_covered_in_window"]) if "days_covered_in_window" in row else 1,
             "estimatedViolations": int(round(row[pred_col])),
             "density": float(round(float(row[pred_col]) / float(max_pred), 3)) if max_pred else 0.0,
         }
@@ -315,22 +390,17 @@ def zones_risk_map():
     center_lat = float(result["centroid_lat"].mean()) if not result.empty else 12.97
     center_lng = float(result["centroid_lon"].mean()) if not result.empty else 77.59
 
-    import json
-    json.dumps({
-    "viewport": {
-        "center": {
-            "lat": round(center_lat, 4),
-            "lng": round(center_lng, 4)
-        },
-        "zoom": 11
-    },
-    "zones": zones,
-    })    
-
+    meta = {
+        "window": window_key,
+        "note": "activeViolations reflects the selected window (real historical sum). "
+                "riskScore/estimatedViolations/density are always based on the next-day "
+                "forecast and do not change with window — there is one trained model, "
+                "not a per-window forecast."
+    }
     return ok({
         "viewport": {"center": {"lat": round(center_lat, 4), "lng": round(center_lng, 4)}, "zoom": 11},
         "zones": zones,
-    })
+    }, meta)
 
 
 # ============================================================
@@ -401,7 +471,7 @@ def violations_timeseries():
     data = []
 
     if grain == "daily" and window in _WINDOW_DAYS:
-        from predict import _BASE_DF
+        from ai.predict import _BASE_DF
         days = _WINDOW_DAYS[window]
         max_date = _BASE_DF["date"].max()
         min_date = max_date - pd.Timedelta(days=days - 1)
@@ -464,6 +534,103 @@ def violations_breakdown():
     return ok(data)
 
 
+@app.route("/api/v1/analytics/summary", methods=["GET"])
+@safe_endpoint
+def analytics_summary():
+    """
+    Powers the Analytics dashboard's window selector (Today/7 Days/30 Days).
+
+    Windowed (real, computed from _BASE_DF, no extra memory cost — reuses
+    the dataframe already loaded by ai/predict.py):
+      - hourlyDistribution, dailyTrend, topZones, totalViolationsInWindow
+
+    NOT windowed (static, full 150-day dataset, unchanged from
+    kpi_dashboard.json — see module note below for why):
+      - violationTypeBreakdown: violations_clustered_slim.csv (which
+        _BASE_DF is built from) drops the violation_type list column after
+        computing blocking-type flags, to keep memory down on Render's free
+        tier. Re-reading the full file a second time just for this chart
+        would double the in-memory footprint, so this stays static.
+      - approvalRatePct / scitaSentRatePct: validation_status and
+        data_sent_to_scita don't exist in violations_clustered_slim.csv at
+        all (only in the full violations.csv kpi_dashboard.py reads), so
+        there's no way to window these even if memory weren't a concern.
+
+    cityRiskLevel / criticalZonesToday / recommendedDeployments are always
+    the next-day forecast and do not change with window — there is one
+    trained model, not a per-window forecast (same as City Risk Map).
+    """
+    window_key = request.args.get("window", "today")
+    if window_key not in _WINDOW_DAYS:
+        return err("INVALID_WINDOW", f"window must be one of {list(_WINDOW_DAYS.keys())}", status=400)
+    window_days = _WINDOW_DAYS[window_key]
+
+    from ai.predict import _BASE_DF
+    max_date = _BASE_DF["date"].max()
+    min_date = max_date - pd.Timedelta(days=window_days - 1)
+    windowed = _BASE_DF[_BASE_DF["date"] >= min_date]
+
+    hourly = (
+        windowed.groupby(windowed["created_datetime"].dt.hour)
+        .size()
+        .reindex(range(24), fill_value=0)
+        .reset_index()
+    )
+    hourly.columns = ["hour", "violations"]
+    hourly_distribution = [
+        {"hour": int(row["hour"]), "violations": int(row["violations"])}
+        for _, row in hourly.iterrows()
+    ]
+
+    daily = windowed.groupby("date").size().reset_index(name="violations").sort_values("date")
+    daily_trend = [
+        {"date": row["date"].strftime("%Y-%m-%d"), "violations": int(row["violations"])}
+        for _, row in daily.iterrows()
+    ]
+
+    top_zones_df = (
+        windowed.groupby("police_station")
+        .size()
+        .sort_values(ascending=False)
+        .head(10)
+        .reset_index(name="violations")
+    )
+    top_zones = top_zones_df.to_dict(orient="records")
+
+    days_covered = int(windowed["date"].nunique())
+    total_violations = int(len(windowed))
+
+    # Next-day forecast overview cards — window-independent, see docstring.
+    result, pred_col, p75, p90 = _get_hotspots(1)
+    avg_impact = int(round(result["impact_score"].mean())) if not result.empty else 0
+    high_risk = int((result["risk_level"] == "HIGH").sum())
+    officers = int(result["recommended_officers"].sum())
+
+    data = {
+        "window": window_key,
+        "daysCoveredInWindow": days_covered,
+        "totalViolationsInWindow": total_violations,
+        "overallCityRiskLevel": _risk_level_str("HIGH" if avg_impact >= 70 else ("MEDIUM" if avg_impact >= 50 else "LOW")),
+        "overallCityRiskScore": avg_impact,
+        "criticalZonesToday": high_risk,
+        "recommendedDeployments": officers,
+        "hourlyDistribution": hourly_distribution,
+        "dailyTrend": daily_trend,
+        "topZones": top_zones,
+    }
+    meta = {
+        "note": "hourlyDistribution/dailyTrend/topZones/totalViolationsInWindow are real "
+                "historical aggregates over the selected window, computed directly from "
+                "violations_clustered_slim.csv. overallCityRiskLevel/criticalZonesToday/"
+                "recommendedDeployments reflect the current next-day forecast and do not "
+                "change with the window — there is one trained model, not a per-window "
+                "forecast. Violation type breakdown and approval-rate stats are not "
+                "included here and remain static (see /api/v1/violations/breakdown) — "
+                "the underlying file doesn't retain those fields per-row."
+    }
+    return ok(data, meta)
+
+
 # ============================================================
 # 3. Forecasts
 # ============================================================
@@ -482,15 +649,7 @@ def forecasts_summary():
     horizon_days = request.args.get("horizonDays", default=7, type=int)
 
     next_day_total = int(round(filtered[pred_col].sum())) if not filtered.empty else 0
-    
-    if horizon_days == 1:
-        projected = next_day_total
-    elif horizon_days == 7:
-        projected = int(round(next_day_total * 7 * 0.92))
-    elif horizon_days == 30:
-        projected = int(round(next_day_total * 30 * 0.85))
-    else:
-        projected = int(round(next_day_total * horizon_days * 0.90))
+    projected = next_day_total
 
     data = {
         "horizonDays": horizon_days,
@@ -505,14 +664,10 @@ def forecasts_summary():
         "generatedAt": now_iso(),
     }
     
-    if horizon_days == 7:
-        data["projectedViolations7d"] = projected
-    else:
-        data["projectedViolations7d"] = None
+    data["projectedViolations7d"] = None
 
     meta = {
-        "note": "horizonDays is dynamic. projectedViolations extrapolates the next-day total "
-                "with decay assumptions for display purposes only."
+        "note": "Predictions are for the next 24 hours only. No hardcoded scaling applied for larger horizons."
     }
     return ok(data, meta)
 
@@ -560,14 +715,7 @@ def forecasts_list():
     page_df, meta = _paginate(filtered)
 
     horizon_days = request.args.get("horizonDays", default=7, type=int)
-    if horizon_days == 1:
-        scale = 1.0
-    elif horizon_days == 7:
-        scale = 7 * 0.92
-    elif horizon_days == 30:
-        scale = 30 * 0.85
-    else:
-        scale = horizon_days * 0.90
+    scale = 1.0
 
     today = datetime.now(IST).strftime("%Y%m%d")
     action_map = {"HIGH": "deploy_unit", "MEDIUM": "monitor", "LOW": "automated"}
