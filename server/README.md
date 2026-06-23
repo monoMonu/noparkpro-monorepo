@@ -1,6 +1,43 @@
 # NoParkPro AI
 
-AI-driven illegal parking hotspot detection and traffic impact quantification for Bangalore, built for [Hackathon Name].
+AI-driven illegal parking hotspot detection and traffic impact quantification for Bangalore.
+
+> Note: Prototype Server is deployed on render free tier so it may take upto 1 minute to spin.
+Live at: https://no-park-pro.vercel.app/
+
+
+## Running the Pipeline
+
+```bash
+# 1. Generate hotspot clusters from raw violations
+python ai/cluster.py
+
+# 2. Build behavioral profiles per cluster
+python ai/temporal.py
+
+# 3. Engineer training features
+python ai/features.py
+
+# 4. Train and validate the model
+python ai/train.py
+
+# 5. (optional) Generate a static prediction snapshot
+python ai/predict.py
+
+# 6. (optional) Build supplementary analytics
+python additional/kpi_dashboard.py
+python additional/trend_analysis.py
+python additional/repeat_offenders.py
+python additional/monthly_hotspots.py
+
+# 7. Shrink the clustered dataset for deployment
+python trim_violations_clustered.py
+
+# 8. Start the server
+python app.py
+```
+
+> Frontend Setup Guide: [Click here](https://github.com/monoMonu/noparkpro-monorepo/blob/main/client/README.md)
 
 ## Problem Statement
 
@@ -188,37 +225,6 @@ Flask backend exposing versioned endpoints under `/api/v1/`, following a consist
 - **Backend**: Flask, Flask-CORS
 - **Frontend**: Next.js, React, Tailwind, Recharts
 - **Deployment**: Render (backend), Vercel (frontend)
-
-## Running the Pipeline
-
-```bash
-# 1. Generate hotspot clusters from raw violations
-python ai/cluster.py
-
-# 2. Build behavioral profiles per cluster
-python ai/temporal.py
-
-# 3. Engineer training features
-python ai/features.py
-
-# 4. Train and validate the model
-python ai/train.py
-
-# 5. (optional) Generate a static prediction snapshot
-python ai/predict.py
-
-# 6. (optional) Build supplementary analytics
-python additional/kpi_dashboard.py
-python additional/trend_analysis.py
-python additional/repeat_offenders.py
-python additional/monthly_hotspots.py
-
-# 7. Shrink the clustered dataset for deployment
-python trim_violations_clustered.py
-
-# 8. Start the API
-python app.py
-```
 
 The API reads `data/violations_clustered_slim.csv`, `data/cluster_temporal.csv`, `data/clusters.csv`, `data/cluster_trends.csv`, and `data/kpi_dashboard.json` at runtime — steps 1–4 and 7 (plus `trend_analysis.py` and `kpi_dashboard.py` from step 6) must be run at least once before starting the API.
 
