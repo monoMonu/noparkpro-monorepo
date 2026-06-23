@@ -34,7 +34,7 @@ export const dashboardRoutes: DashboardRouteConfig[] = [
     icon: Radar,
     href: "/dashboard/prediction-center",
     title: "Predictive Analytics Engine",
-    subtitle: "Generating 7-day algorithmic forecasts based on historical spatial data and live sensor feeds.",
+    subtitle: "Generating next 24 hours algorithmic forecasts based on historical spatial data and live sensor feeds.",
     searchPlaceholder: "Query location, vehicle plate, or zone ID...",
   },
   {

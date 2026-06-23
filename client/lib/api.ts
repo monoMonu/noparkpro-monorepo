@@ -36,6 +36,7 @@ export type ZoneHotspot = {
   riskScore: number;
   riskLevel: RiskLevel;
   summary: string;
+  daysCoveredInWindow?: number;
 };
 
 export type RiskMapZone = {
@@ -243,15 +244,15 @@ export async function getViolationsBreakdown(query?: CommonQuery) {
   return apiGet<ViolationBreakdownItem[]>("/api/v1/violations/breakdown", query);
 }
 
-export async function getForecastsSummary(query?: { horizonDays?: number; zoneId?: string; modelVersion?: string }) {
+export async function getForecastsSummary(query?: { horizonDays?: number; zoneId?: string; riskLevel?: RiskLevel; q?: string; modelVersion?: string }) {
   return apiGet<ForecastSummary>("/api/v1/forecasts/summary", query);
 }
 
-export async function getForecastsConfidence(query?: { horizonDays?: number; zoneId?: string; modelVersion?: string }) {
+export async function getForecastsConfidence(query?: { horizonDays?: number; zoneId?: string; riskLevel?: RiskLevel; q?: string; modelVersion?: string }) {
   return apiGet<ForecastConfidencePoint[]>("/api/v1/forecasts/confidence", query);
 }
 
-export async function getForecasts(query?: { horizonDays?: number; zoneId?: string; riskLevel?: RiskLevel; page?: number; pageSize?: number; sort?: string }) {
+export async function getForecasts(query?: { horizonDays?: number; zoneId?: string; riskLevel?: RiskLevel; q?: string; page?: number; pageSize?: number; sort?: string }) {
   return apiGet<ForecastRow[], { page: number; pageSize: number; total: number }>("/api/v1/forecasts", query);
 }
 
@@ -259,6 +260,24 @@ export async function getResourcesSummary(query?: Pick<CommonQuery, "stationId" 
   return apiGet<ResourcesSummary>("/api/v1/resources/summary", query);
 }
 
+export type AnalyticsSummary = {
+  window: "today" | "7d" | "30d";
+  daysCoveredInWindow: number;
+  totalViolationsInWindow: number;
+  overallCityRiskLevel: RiskLevel;
+  overallCityRiskScore: number;
+  criticalZonesToday: number;
+  recommendedDeployments: number;
+  hourlyDistribution: Array<{ hour: number; violations: number }>;
+  dailyTrend: Array<{ date: string; violations: number }>;
+  topZones: Array<{ police_station: string; violations: number }>;
+};
+
 export async function getCurrentAllocationPlan(query?: { planningWindow?: string; stationId?: string; zoneId?: string }) {
   return apiGet<AllocationPlan>("/api/v1/allocation-plans/current", query);
 }
+
+export async function getAnalyticsSummary(query?: Pick<CommonQuery, "window">) {
+  return apiGet<AnalyticsSummary>("/api/v1/analytics/summary", query);
+}
+

@@ -1,8 +1,6 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 
 export interface Location {
   id: string;
@@ -24,10 +22,11 @@ interface MapProps {
   viewport?: Viewport;
   height?: string;
   onMarkerClick?: (locationId: string) => void;
+  onMarkerHover?: (locationId: string | null) => void;
   selectedLocationId?: string;
 }
 
-const MapContext = createContext<maplibregl.Map | null>(null);
+const MapContext = createContext<{ wrapper: any; raw: any } | null>(null);
 
 export const getRiskColor = (riskLevel: string) => {
   switch (riskLevel) {
@@ -48,19 +47,21 @@ export const getRiskColor = (riskLevel: string) => {
 interface MarkerProps {
   location: Location;
   color: string;
-  anchor?: 'center' | 'top' | 'bottom' | 'left' | 'right';
-  onClick?: (locationId: string) => void;
   isSelected?: boolean;
 }
 
-export const Marker = ({ location, color, anchor = 'center', onClick, isSelected = false }: MarkerProps) => {
-  const map = useContext(MapContext);
-  const markerRef = useRef<maplibregl.Marker | null>(null);
+export const Marker = ({ location, color, isSelected = false }: MarkerProps) => {
+  const context = useContext(MapContext);
+  const markerRef = useRef<any | null>(null);
 
   useEffect(() => {
-    if (!map) return;
+    if (!context || !context.wrapper || !context.raw) return;
+
+    const mapplsObj = (window as any).mappls;
+    if (!mapplsObj) return;
 
     const el = document.createElement('div');
+    el.setAttribute('data-marker-id', location.id);
     el.style.width = isSelected ? '26px' : '20px';
     el.style.height = isSelected ? '26px' : '20px';
     el.style.borderRadius = '50%';
@@ -72,190 +73,294 @@ export const Marker = ({ location, color, anchor = 'center', onClick, isSelected
     el.style.cursor = 'pointer';
     el.style.transition = 'width 0.2s ease-in-out, height 0.2s ease-in-out, border 0.2s ease-in-out, box-shadow 0.2s ease-in-out, background-color 0.2s ease-in-out';
 
-    const marker = new maplibregl.Marker({
-      element: el,
-      anchor: anchor,
-    })
-      .setLngLat([location.longitude, location.latitude])
-      .addTo(map);
-
-    let popup: maplibregl.Popup | null = null;
-
-    // Click handler
-    el.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (onClick) {
-        onClick(location.id);
-      }
-    });
-
-    // Hover details popup
-    el.addEventListener('mouseenter', () => {
-      const popupContent = `
-        <div style="font-family: sans-serif; padding: 8px; font-size: 13px; line-height: 1.4; color: #171717;">
-          <div style="font-weight: 600; margin-bottom: 4px;">${location.zoneName || 'Zone ' + location.id}</div>
-          <div style="display: flex; justify-content: space-between; gap: 16px; margin-bottom: 2px;">
-            <span style="color: #666;">Risk Level:</span>
-            <span style="font-weight: 500; text-transform: capitalize; color: ${color};">${location.riskLevel}</span>
-          </div>
-          ${location.riskScore !== undefined ? `
-            <div style="display: flex; justify-content: space-between; gap: 16px; margin-bottom: 2px;">
-              <span style="color: #666;">Risk Score:</span>
-              <span style="font-weight: 600;">${location.riskScore}%</span>
-            </div>
-          ` : ''}
-          ${location.activeViolations !== undefined ? `
-            <div style="display: flex; justify-content: space-between; gap: 16px;">
-              <span style="color: #666;">Active Violations:</span>
-              <span style="font-weight: 600;">${location.activeViolations}</span>
-            </div>
-          ` : ''}
-        </div>
-      `;
-
-      popup = new maplibregl.Popup({
-        closeButton: false,
-        closeOnClick: false,
-        offset: [0, -10] as [number, number],
-      })
-        .setLngLat([location.longitude, location.latitude])
-        .setHTML(popupContent)
-        .addTo(map);
-    });
-
-    el.addEventListener('mouseleave', () => {
-      if (popup) {
-        popup.remove();
-        popup = null;
-      }
+    const marker = new mapplsObj.Marker({
+      map: context.wrapper,
+      position: { lat: location.latitude, lng: location.longitude },
+      html: el.outerHTML,
+      width: isSelected ? 26 : 20,
+      height: isSelected ? 26 : 20,
     });
 
     markerRef.current = marker;
 
     return () => {
-      if (popup) {
-        popup.remove();
-      }
       if (markerRef.current) {
         markerRef.current.remove();
         markerRef.current = null;
       }
     };
-  }, [map, location.id, location.longitude, location.latitude, location.riskLevel, location.zoneName, location.riskScore, location.activeViolations, color, anchor, onClick, isSelected]);
+  }, [context, location.id, location.longitude, location.latitude, color, isSelected]);
 
   return null;
 };
 
-const MAPTILER_API_KEY = process.env.NEXT_PUBLIC_MAPTILER_API_KEY || ""
-
-const Map = ({ locations, viewport, height = '600px', onMarkerClick, selectedLocationId }: MapProps) => {
-  const [map, setMap] = useState<maplibregl.Map | null>(null);
+const Map = ({ locations, viewport, height = '600px', onMarkerClick, onMarkerHover, selectedLocationId }: MapProps) => {
+  const [map, setMap] = useState<{ wrapper: any; raw: any } | null>(null);
+  const [sdkLoaded, setSdkLoaded] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const [hoveredLocation, setHoveredLocation] = useState<Location | null>(null);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
-  // Initialize Map
+  // Load Mappls SDK script and CSS dynamically
   useEffect(() => {
-    if (!containerRef.current) return;
-
-    const initialCenter: [number, number] = viewport
-      ? [viewport.center.lng, viewport.center.lat]
-      : [77.5946, 12.9716];
-
-    const initialZoom = viewport ? viewport.zoom : 12;
-
-    if (!MAPTILER_API_KEY) {
-      console.error("Maptiler api key not available.");
+    const apiKey = process.env.NEXT_PUBLIC_MAPPLS_API_KEY || "";
+    if (!apiKey || apiKey === "YOUR_MAPPLS_API_KEY") {
+      console.warn("Mappls API key not found or using placeholder value.");
       return;
     }
 
-    const mapInstance = new maplibregl.Map({
-      container: containerRef.current,
-      style: `https://api.maptiler.com/maps/streets/style.json?key=${MAPTILER_API_KEY}`,
-      center: initialCenter,
-      zoom: initialZoom,
-    });
+    // Load CSS
+    const existingCss = document.getElementById('mappls-sdk-css');
+    if (!existingCss) {
+      const link = document.createElement('link');
+      link.id = 'mappls-sdk-css';
+      link.rel = 'stylesheet';
+      link.href = `https://apis.mappls.com/advancedmaps/api/${apiKey}/map_sdk_css?v=3.0`;
+      document.head.appendChild(link);
+    }
 
-    mapInstance.on('load', () => {
-      setMap(mapInstance);
-    });
+    // Load JS Script
+    const existingScript = document.getElementById('mappls-sdk-script');
+    if (existingScript) {
+      if ((window as any).mappls) {
+        setSdkLoaded(true);
+      } else {
+        existingScript.addEventListener('load', () => setSdkLoaded(true));
+      }
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'mappls-sdk-script';
+    script.src = `https://apis.mappls.com/advancedmaps/api/${apiKey}/map_sdk?layer=vector&v=3.0`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      setSdkLoaded(true);
+    };
+    script.onerror = () => {
+      console.error("Failed to load Mappls SDK");
+    };
+    document.head.appendChild(script);
+  }, []);
+
+  // Initialize Map
+  useEffect(() => {
+    if (!sdkLoaded || !containerRef.current) return;
+
+    // Dynamically assign ID on client to avoid hydration mismatch
+    const uniqueId = `mappls-map-${Math.random().toString(36).substring(2, 9)}`;
+    containerRef.current.id = uniqueId;
+
+    // Mappls map options expect { lat, lng } for center
+    const initialCenter = viewport
+      ? { lat: viewport.center.lat, lng: viewport.center.lng }
+      : { lat: 12.9716, lng: 77.5946 };
+    const initialZoom = viewport ? viewport.zoom : 12;
+
+    const mapplsObj = (window as any).mappls;
+    if (!mapplsObj) return;
+
+    let mapInstance: any = null;
+    try {
+      mapInstance = new mapplsObj.Map(uniqueId, {
+        center: initialCenter,
+        zoom: initialZoom,
+      });
+
+      const handleLoad = () => {
+        if (mapInstance && typeof mapInstance.getMap === 'function') {
+          setMap({ wrapper: mapInstance, raw: mapInstance.getMap() });
+        } else {
+          setMap({ wrapper: mapInstance, raw: mapInstance });
+        }
+      };
+
+      if (mapInstance.addListener) {
+        mapInstance.addListener('load', handleLoad);
+      } else {
+        handleLoad();
+      }
+    } catch (error) {
+      console.error("Error creating Mappls map:", error);
+    }
 
     return () => {
-      mapInstance.remove();
+      if (mapInstance) {
+        if (typeof mapInstance.remove === 'function') {
+          mapInstance.remove();
+        } else if (typeof mapInstance.getMap === 'function') {
+          const raw = mapInstance.getMap();
+          if (raw && typeof raw.remove === 'function') {
+            raw.remove();
+          }
+        }
+      }
     };
-  }, []);
+  }, [sdkLoaded]);
 
   // Update viewport dynamically if it changes
   useEffect(() => {
-    if (!map || !viewport) return;
-    map.setCenter([viewport.center.lng, viewport.center.lat]);
-    map.setZoom(viewport.zoom);
+    if (!map || !map.raw || !viewport) return;
+    map.raw.setCenter([viewport.center.lng, viewport.center.lat]);
+    map.raw.setZoom(viewport.zoom);
   }, [map, viewport]);
 
-  // Handle GeoJSON Source and Layer
+  // Track mouse position relative to map container
   useEffect(() => {
-    if (!map) return;
+    const container = containerRef.current;
+    if (!container) return;
 
-    const sourceId = 'locations';
-    const layerId = 'locations-layer';
-
-    const geojsonData: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: locations.map((location) => ({
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: [location.longitude, location.latitude],
-        },
-        properties: {
-          riskLevel: location.riskLevel,
-        },
-      })),
+    const handleMouseMove = (e: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      setMousePos({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      });
     };
 
-    if (map.getSource(sourceId)) {
-      const source = map.getSource(sourceId) as maplibregl.GeoJSONSource;
-      source.setData(geojsonData);
-    } else {
-      map.addSource(sourceId, {
-        type: 'geojson',
-        data: geojsonData,
-      });
+    container.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      container.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, []);
 
-      if (!map.getLayer(layerId)) {
-        map.addLayer({
-          id: layerId,
-          type: 'circle',
-          source: sourceId,
-          paint: {
-            'circle-radius': 10,
-            'circle-color': [
-              'case',
-              ['==', ['get', 'riskLevel'], 'critical'],
-              '#ef4444',
-              ['==', ['get', 'riskLevel'], 'high'],
-              '#f97316',
-              ['==', ['get', 'riskLevel'], 'elevated'],
-              '#eab308',
-              '#3b82f6',
-            ],
-          },
-        });
+  // Event delegation for hover (mouseover and mouseout)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleMouseOver = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const markerEl = target.closest('[data-marker-id]');
+      if (markerEl) {
+        const markerId = markerEl.getAttribute('data-marker-id');
+        const foundLoc = locations.find((l) => l.id === markerId);
+        if (foundLoc) {
+          setHoveredLocation(foundLoc);
+          if (onMarkerHover) {
+            onMarkerHover(markerId);
+          }
+        }
       }
-    }
-  }, [map, locations]);
+    };
+
+    const handleMouseOut = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const markerEl = target.closest('[data-marker-id]');
+      if (markerEl) {
+        setHoveredLocation(null);
+        if (onMarkerHover) {
+          onMarkerHover(null);
+        }
+      }
+    };
+
+    container.addEventListener('mouseover', handleMouseOver);
+    container.addEventListener('mouseout', handleMouseOut);
+
+    return () => {
+      container.removeEventListener('mouseover', handleMouseOver);
+      container.removeEventListener('mouseout', handleMouseOut);
+    };
+  }, [locations, onMarkerHover]);
+
+  // Event delegation for clicks
+  useEffect(() => {
+    if (!containerRef.current || !onMarkerClick) return;
+
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const markerEl = target.closest('[data-marker-id]');
+      if (markerEl) {
+        const markerId = markerEl.getAttribute('data-marker-id');
+        if (markerId) {
+          onMarkerClick(markerId);
+        }
+      }
+    };
+
+    const container = containerRef.current;
+    container.addEventListener('click', handleClick);
+
+    return () => {
+      container.removeEventListener('click', handleClick);
+    };
+  }, [onMarkerClick]);
 
   return (
     <MapContext.Provider value={map}>
       <div ref={containerRef} style={{ width: '100%', height, position: 'relative' }}>
+        {!sdkLoaded && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-[2px] z-10">
+            <span className="text-sm font-semibold text-on-surface-variant">Loading Mappls SDK...</span>
+          </div>
+        )}
         {map && locations.map((location) => (
           <Marker
             key={location.id}
             location={location}
             color={getRiskColor(location.riskLevel)}
-            anchor="center"
-            onClick={onMarkerClick}
             isSelected={selectedLocationId === location.id}
           />
         ))}
+
+        {(() => {
+          if (!hoveredLocation) return null;
+
+          const tooltipWidth = 220;
+          const tooltipHeight = 135;
+          let leftPos = mousePos.x + 15;
+          let topPos = mousePos.y + 15;
+
+          if (containerRef.current) {
+            const containerWidth = containerRef.current.clientWidth;
+            const containerHeight = containerRef.current.clientHeight;
+
+            if (mousePos.x + tooltipWidth + 15 > containerWidth) {
+              leftPos = mousePos.x - tooltipWidth - 15;
+            }
+            if (mousePos.y + tooltipHeight + 15 > containerHeight) {
+              topPos = mousePos.y - tooltipHeight - 15;
+            }
+          }
+
+          leftPos = Math.max(5, leftPos);
+          topPos = Math.max(5, topPos);
+
+          return (
+            <div
+              className="absolute z-50 pointer-events-none bg-surface/95 text-on-surface backdrop-blur-md border border-outline-variant rounded-lg p-3 shadow-[0_10px_30px_rgba(0,0,0,0.15)] text-sm flex flex-col gap-1.5 w-[220px]"
+              style={{
+                left: leftPos,
+                top: topPos,
+                fontFamily: 'sans-serif'
+              }}
+            >
+              <div className="font-semibold text-base border-b border-outline-variant pb-1 mb-1 text-on-surface">
+                {hoveredLocation.zoneName || `Zone ${hoveredLocation.id}`}
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-on-surface-variant">Risk Level:</span>
+                <span className="font-semibold capitalize" style={{ color: getRiskColor(hoveredLocation.riskLevel) }}>
+                  {hoveredLocation.riskLevel}
+                </span>
+              </div>
+              {hoveredLocation.riskScore !== undefined && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-on-surface-variant">Risk Score:</span>
+                  <span className="font-semibold">{hoveredLocation.riskScore}%</span>
+                </div>
+              )}
+              {hoveredLocation.activeViolations !== undefined && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-on-surface-variant">Active Violations:</span>
+                  <span className="font-semibold">{hoveredLocation.activeViolations}</span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
     </MapContext.Provider>
   );

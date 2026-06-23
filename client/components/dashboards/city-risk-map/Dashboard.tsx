@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Info } from "lucide-react";
 import { CityMapCanvas } from "./CityMapCanvas";
 import { FilterBar } from "./FilterBar";
 import { HotspotSidebar } from "./HotspotSidebar";
@@ -118,6 +119,13 @@ export function CityRiskMapDashboard({
         violationTypes={violationTypes}
       />
 
+      <div className="mb-6 flex items-start gap-2.5 rounded-lg border border-outline-variant bg-surface-container-low p-3.5 text-xs text-on-surface-variant">
+        <Info className="mt-0.5 h-4 w-4 text-primary flex-shrink-0" />
+        <div>
+          <span className="font-semibold text-on-surface">Forecasting Note:</span> Risk scores, estimated 24h/next-day violations, and recommended unit metrics represent tomorrow's forecast predictions. They are independent of the historical time window selection.
+        </div>
+      </div>
+
       {error && (
         <div className="mb-6 rounded-md border border-error bg-error/10 p-4 text-sm text-error">
           <div className="font-semibold">Failed to load data</div>
@@ -147,9 +155,9 @@ export function CityRiskMapDashboard({
             <div className="absolute left-6 right-6 top-6 z-10">
               <StatCards violationsSummary={summary} resourcesSummary={resources} />
             </div>
-            <CityMapCanvas riskMap={riskMap} breakdown={initialViolationsBreakdown} />
+            <CityMapCanvas riskMap={riskMap} />
           </div>
-          <HotspotSidebar hotspots={hotspots} />
+          <HotspotSidebar hotspots={hotspots} currentWindow={windowVal} />
         </div>
       </div>
     </>

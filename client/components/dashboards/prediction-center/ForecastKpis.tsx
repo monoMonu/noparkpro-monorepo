@@ -44,10 +44,10 @@ export function ForecastKpis({ summary }: { summary: ForecastSummary }) {
   const projectedViolations = summary.projectedViolations7d ?? summary.projectedViolations;
   const forecastCards = [
     {
-      label: "Projected Violations",
+      label: "Projected Violations (Next 24h)",
       value: formatNumber(projectedViolations),
       delta: `${summary.projectedViolationsDeltaPercentage >= 0 ? "+" : ""}${summary.projectedViolationsDeltaPercentage.toFixed(1)}%`,
-      detail: `Expected next ${summary.horizonDays} days based on current trajectory.`,
+      detail: `Expected violations for the next 24 hours based on ML predictions.`,
       tone: "border-t-error",
       icon: TrendingUp,
     },

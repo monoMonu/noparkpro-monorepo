@@ -6,7 +6,7 @@ import type { ForecastConfidencePoint } from "@/lib/api";
 
 export function ConfidenceChart({ data }: { data: ForecastConfidencePoint[] }) {
   return (
-    <div className="h-[310px] min-h-0 min-w-0 w-full">
+    <div className="h-[400px] min-h-0 min-w-0 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 10, right: 20, left: 10, bottom: 20 }}>
           <CartesianGrid stroke="var(--outline-variant)" strokeOpacity={0.55} vertical={false} />

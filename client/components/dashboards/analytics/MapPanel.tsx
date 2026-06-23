@@ -3,13 +3,6 @@ import { Badge } from "@/components/ui/badge";
 import type { RiskMap } from "@/lib/api";
 import Map from '@/components/maps/Map';
 
-interface Location {
-  id: string;
-  longitude: number;
-  latitude: number;
-  riskLevel: string;
-}
-
 export function MapPanel({ riskMap }: { riskMap: RiskMap }) {
   const locations = riskMap.zones.map((zone) => ({
     id: zone.zoneId,
