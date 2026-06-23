@@ -6,7 +6,33 @@ AI-driven illegal parking hotspot detection and traffic impact quantification fo
 Live at: https://no-park-pro.vercel.app/
 
 
-## Running the Pipeline
+## ⚙️ Setup Guide
+
+### 1. Prerequisites
+* **Python**: v3.9 to v3.11 is recommended.
+* **Pip**: Make sure Python package installer is installed.
+
+### 2. Installation
+It is recommended to run the server inside a Python virtual environment:
+```bash
+# Create a virtual environment
+python -m venv venv
+
+# Activate the virtual environment
+# On Windows:
+.\venv\Scripts\activate
+
+# On macOS/Linux:
+source venv/bin/activate
+```
+
+Next, install all required dependencies:
+```bash
+pip install -r requirements.txt
+```
+---
+
+## ⚡ Running the Pipeline
 
 ```bash
 # 1. Generate hotspot clusters from raw violations
