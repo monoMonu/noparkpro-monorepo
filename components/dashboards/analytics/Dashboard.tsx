@@ -279,10 +279,6 @@ export function AnalyticsExecutiveDashboard({
           ))}
         </section>
 
-        <section className="mt-4">
-          <MapPanel riskMap={riskMap} />
-        </section>
-
         <section className="mt-4 grid gap-4 lg:grid-cols-2">
           <HotspotsPanel hotspots={hotspots} />
           <ViolationBreakdown breakdown={breakdown} />
@@ -290,6 +286,10 @@ export function AnalyticsExecutiveDashboard({
 
         <section className="mt-4">
           <SummaryCharts hourlySeries={hourlySeries} dailySeries={dailySeries} />
+        </section>
+
+        <section className="mt-4">
+          <MapPanel riskMap={riskMap} />
         </section>
       </div>
     </>
