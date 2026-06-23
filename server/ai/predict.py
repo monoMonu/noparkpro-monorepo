@@ -54,6 +54,15 @@ def _load_base_dataframe():
 # not on every request.
 _BASE_DF = _load_base_dataframe()
 
+# Supported windows for run_predictions_windowed(). 30-day intentionally
+# excluded — verified against the real dataset that 250 of 364 clusters
+# (69%) have fewer than 30 distinct days of activity in the full 150-day
+# dataset (Nov 2023 - Apr 2024). A 30-day sum would be empty or near-empty
+# for most clusters, misrepresenting sparse data as a quiet month rather
+# than showing the real lack of history. Only "today" and "7d" are real
+# and dense enough to present as comparable across all clusters.
+SUPPORTED_WINDOW_DAYS = {1, 7}
+
 
 def get_risk_level(pred, p75, p90):
     if pred >= p90:
@@ -240,6 +249,81 @@ def run_predictions():
     return latest, p75, p90
 
 
+def run_predictions_windowed(window_days=1):
+    """
+    Returns the same 364 clusters and the same next-day forecast as
+    run_predictions(). The ONLY thing that changes with window_days is the
+    displayed historical `violations` / `blocking_violations` / `blocking_ratio`
+    count per cluster — recomputed as a real sum over the trailing window,
+    taken directly from _BASE_DF (no fabrication, no extrapolation).
+
+    predicted_violations, predicted_violations_raw, impact_score, risk_level,
+    recommended_officers, recommended_tow_trucks, priority_rank are NOT
+    recomputed per window. There is exactly one trained model and it produces
+    a single next-day forecast — there is no 7-day-ahead model. Faking a
+    window-dependent forecast would mean inventing numbers, so instead these
+    fields are left as the real next-day forecast regardless of window, and
+    a `forecast_basis` field is added so any API consumer can tell that these
+    specific fields are constant across windows.
+
+    window_days=1 -> identical to run_predictions() (single latest day's count)
+    window_days=7 -> trailing 7-day sum per cluster
+
+    window_days=30 (or any value outside SUPPORTED_WINDOW_DAYS) raises
+    ValueError on purpose — see SUPPORTED_WINDOW_DAYS comment above for why
+    30-day was tested against the real dataset and dropped.
+    """
+    if window_days not in SUPPORTED_WINDOW_DAYS:
+        raise ValueError(
+            f"window_days={window_days} not supported. "
+            f"Only {sorted(SUPPORTED_WINDOW_DAYS)} are available — see "
+            f"SUPPORTED_WINDOW_DAYS comment in predict.py for why 30-day "
+            f"was excluded (insufficient real data density per cluster)."
+        )
+
+    latest, p75, p90 = run_predictions()
+
+    if window_days == 1:
+        latest["forecast_basis"] = "next_day"
+        latest["days_covered_in_window"] = 1
+        return latest, p75, p90
+
+    # window_days == 7 from here on
+    df = _BASE_DF
+    max_date = df["date"].max()
+    min_date = max_date - pd.Timedelta(days=window_days - 1)
+    windowed = df[df["date"] >= min_date]
+
+    window_agg = (
+        windowed.groupby("cluster_id")
+        .agg(
+            violations=("cluster_id", "count"),
+            blocking_violations=("is_blocking", "sum"),
+            days_covered_in_window=("date", "nunique"),
+        )
+        .reset_index()
+    )
+    window_agg["blocking_ratio"] = (
+        window_agg["blocking_violations"] / window_agg["violations"]
+    ).round(3)
+
+    # Drop the single-day versions of these columns before merging in the
+    # windowed versions — avoids _x/_y suffix collisions on merge.
+    latest = latest.drop(columns=["violations", "blocking_violations", "blocking_ratio"])
+    latest = latest.merge(window_agg, on="cluster_id", how="left")
+
+    # A cluster with zero violations in this window won't appear in
+    # window_agg at all (groupby drops empty groups) — fillna(0) here means
+    # "really had zero violations in this window", not "missing/unknown".
+    latest["violations"] = latest["violations"].fillna(0).astype(int)
+    latest["blocking_violations"] = latest["blocking_violations"].fillna(0).astype(int)
+    latest["blocking_ratio"] = latest["blocking_ratio"].fillna(0.0)
+    latest["days_covered_in_window"] = latest["days_covered_in_window"].fillna(0).astype(int)
+    latest["forecast_basis"] = "next_day"
+
+    return latest, p75, p90
+
+
 if __name__ == "__main__":
     result, p75, p90 = run_predictions()
 
@@ -263,3 +347,14 @@ if __name__ == "__main__":
 
     result.to_csv("data/hotspot_predictions.csv", index=False)
     print(f"\nSaved {len(result)} cluster predictions to data/hotspot_predictions.csv")
+
+    # Quick sanity check for the windowed function — run only when this
+    # file is executed directly, not on import.
+    print("\n--- Windowed sanity check (window_days=7) ---")
+    windowed_result, _, _ = run_predictions_windowed(7)
+    print(
+        windowed_result[["cluster_id", "violations", "days_covered_in_window"]]
+        .sort_values("violations", ascending=False)
+        .head(10)
+        .to_string(index=False)
+    )
